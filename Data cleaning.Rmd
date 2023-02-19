@@ -11,7 +11,7 @@ path = "../Data-OW/"
 
 Importing libraries
 ```{r}
-pacman::p_load(readxl, lubridate, dplyr)
+pacman::p_load(readxl, lubridate, dplyr, timechange)
 ```
 
 ___________________________________________________
@@ -25,8 +25,9 @@ str(product.df)
 ```
 
 Cleaning ProductKey Column
+Note: (i?) is used to render the match case insensitive
 ```{r}
-product.df$ProductKey <- gsub("key_", "", product.df$ProductKey)
+product.df$ProductKey <- gsub("(i?)key_", "", product.df$ProductKey)
 length(product.df$ProductKey)
 
 # OK
@@ -35,12 +36,12 @@ length(product.df$ProductKey)
 Cleaning Product Sub-Category column. Indeed, lv2. has some categories that needs to  
 be transformed from lower case to upper case before the substitution
 ```{r}
-product.df$ProductCategory_Lvl1 <- gsub("Category ", "", 
-                                        product.df$ProductCategory_Lvl1)
+product.df$ProductCategory_Lvl1 <- toupper(gsub("(\\w*\\s+)", "", 
+                                        product.df$ProductCategory_Lvl1))
 
-product.df$ProductCategory_Lvl2 <- toupper(product.df$ProductCategory_Lvl2)
-product.df$ProductCategory_Lvl2 <- gsub("CATEGORY ", "", 
-                                        product.df$ProductCategory_Lvl2)
+product.df$ProductCategory_Lvl2 <- toupper(gsub("(\\w*\\s+)", "", 
+                                        product.df$ProductCategory_Lvl2))
+
 ```
 
 Transforming categories into factors
@@ -60,34 +61,19 @@ At lv.1 only A category is present in the dataset
 ```{r}
 table(product.df$ProductCategory_Lvl2)
 ```
-
-"CATEGRORY AE" needs to be corrected, maybe we can later implement a way to 
-correct the column no matter the spelling mistakes of "category" --> REGEX !! 
-
-```{r}
-product.df$ProductCategory_Lvl2[product.df$ProductCategory_Lvl2 == 
-                                  "CATEGRORY AE"] <- "AE"
-product.df$ProductCategory_Lvl2 <- droplevels(product.df$ProductCategory_Lvl2)
-```
-
-```{r}
-table(product.df$ProductCategory_Lvl2)
-```
-
 Product suppliers
 ```{r}
 length(unique(product.df$SupplierKey))
 ```
 There are 17 Product suppliers
 
-________________________________________________________
+________________________________________________________________________________
 # CPI dataset
 
-```{r}
-setwd(path)
-cpi.df <- read_xlsx("Consumer Price Index_vShared.xlsx")
+```{r} 
+head(cpi.df <- read_xlsx(paste0(path, "Consumer Price Index_vShared.xlsx")))
 ```
-
+Understanding type of variables
 ```{r}
 str(cpi.df)
 ```
@@ -97,16 +83,17 @@ Date columns are already in POSIXct format, no need for change
 ```{r}
 summary(cpi.df)
 ```
-Most of monthly data are missing, the information must be reconstructed starting from the daily data
+Most of monthly data are missing, thus the information must be reconstructed starting from the daily data. We have noticed that the monthly CPI index is constructed 
+by simply taking the first-of-the-month index. Is it correct though? 
 
 Idea: creating the correspondence between month and year, and computing the monthly CPI as the mean of the daily CPI
 
 ```{r}
 # Creating Date_Monthly and CPI_monthly columns
-cpi.df1 <- cpi.df %>% 
-  group_by(month(Date_daily), year(Date_daily)) %>% 
-  mutate(Date_monthly1 = paste0(year(Date_daily),"-",month(Date_daily),"-01"),
-         CPI_monthly1 = mean(CPI_daily))
+head(cpi.df1 <- cpi.df %>% 
+     group_by(month(Date_daily), year(Date_daily)) %>% 
+     mutate(Date_monthly1 = paste0(year(Date_daily),"-",month(Date_daily),"-01"),
+             CPI_monthly1 = mean(CPI_daily)))
 
 cpi.df1 <- cpi.df1 %>% 
   ungroup() %>% 
@@ -129,30 +116,23 @@ remove(cpi.df1)
 # Final check
 str(cpi.df)
 
-#OK
+# OK
 ```
 
 IMPORTANT NOTE:
-There is a slight difference in monthly CPI computed as the mean of daily values and the one provided by the data.. Am I correcting the data or the monthly CPI is computed in a different way?
-
-Maybe every month is standardized over 30 days
--> sum(CPI_daily)/30
+There is a slight difference in monthly CPI computed as the mean of daily values and the one provided by the data due to the reason stated above. 
 
 ___________________________________________________
 # Promotion dataset
 
 ```{r}
-setwd(path)
-promotion.df <- read.table("Hackathon_DimPromotion_SAN_vShared.csv", 
-                           header = TRUE,
-                           sep = ",")
-```
-
-```{r}
+head(promotion.df <- read.table(paste0(path,"Hackathon_DimPromotion_SAN_vShared.csv"), 
+                                header = TRUE,
+                                sep = ","))
 str(promotion.df)
 ```
 
-Transforming PromotionKey into character (might transform into factor later)
+Transforming PromotionKey into character (might be transformed into factor later)
 ```{r}
 promotion.df$PromotionKey <- as.character(promotion.df$PromotionKey)
 ```
@@ -169,7 +149,6 @@ promotion.df$PromotionEndDate <- as.POSIXct(promotion.df$PromotionEndDate,
 Transforming promotion mechanics into factor
 ```{r}
 promotion.df$PromoMechanic <- as.factor(promotion.df$PromoMechanic)
-
 table(promotion.df$PromoMechanic)
 ```
 There are 15 promotion types + 1 unknown
@@ -185,17 +164,17 @@ ____________________________________________-
 # Store Dataset
 
 ```{r}
-setwd(path)
-store.df <- read.table("Hackathon_DimStore_SAN_vShared.csv", 
+head(store.df <- read.table(paste0(path, 
+                                   "Hackathon_DimStore_SAN_vShared.csv"), 
                            header = TRUE,
-                           sep = ",")
+                           sep = ","))
 ```
 
 ```{r}
 str(store.df)
 ```
 
-Transforming StoreKey  and DistributionChannel into factors
+Transforming StoreKey and DistributionChannel into factors
 ```{r}
 store.df$StoreKey <- as.factor(store.df$StoreKey)
 store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
@@ -220,7 +199,8 @@ store.df$Region_Lvl2 <- as.factor(store.df$Region_Lvl2)
 Final check
 ```{r}
 table(store.df$Region_Lvl1)
-table(store.df$Region_Lvl2)
+as.data.frame(table(store.df$Region_Lvl2))
+
 ```
 
 OK
@@ -230,20 +210,23 @@ _____________________________________
 
 ```{r}
 setwd(path)
-transaction.df <- read.table("Hackathon_FactSalesTransactionDATES_vShared.csv", 
-                             header = TRUE,
-                             sep = ",")
+head(transaction.df <- read.table(paste0(path,
+                       "Hackathon_FactSalesTransactionDATES_vShared.csv"),
+                                  header = TRUE,
+                                  sep = ","))
 ```
 
 ```{r}
 str(transaction.df)
 ```
-Trasforming TransactionDate into POSIXct format (it takes a long time)
+Trasforming TransactionDate into POSIXct format (it takes a while)
 ```{r}
-transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
-                                             format = "%Y-%m-%d")
-```
+head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
+                                              format = "%Y-%m-%d",
+                                              tz = time_at_tz(
+                                              Sys.timezone(location = TRUE))))
 
+```
 Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
 ```{r}
 transaction.df$DayOfWeek <- as.factor(transaction.df$DayOfWeek)
@@ -255,23 +238,23 @@ transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
 ```{r}
 summary(transaction.df)
 ```
-23978 missing transactions
+23978 missing transactions: Imputing or removing?
 
-
-_____________________________________
+________________________________________________________________________________
 # Trasaction Promotion Dataset
 
 ```{r}
-setwd(path)
-transaction.promotion.df <- read.table("Hackathon_FactSalesTransactionPromotion_vShared.csv", 
+head(transaction.promotion.df <-read.table(paste0(path,
+                                             "Hackathon_FactSalesTransactionPromotion_vShared.csv"),
                                        header = TRUE,
-                                       sep = ",")
+                                       sep = ","))
 ```
 
 Transforming TransactionDate into POSIXct format
 ```{r}
 transaction.promotion.df$TransactionDate <- as.POSIXct(transaction.promotion.df$TransactionDate,
                                                        format = "%Y-%m-%d")
+
 ```
 
 Transforming StoreKey, ProductKey and Promotion Key into factors
@@ -283,6 +266,7 @@ transaction.promotion.df$PromotionKey <- as.factor(transaction.promotion.df$Prom
 
 ```{r}
 summary(transaction.promotion.df)
+
 ```
 
 OK
@@ -291,10 +275,54 @@ _____________________________________
 # Holiday
 
 ```{r}
-setwd(path)
-holiday.df <- read.table("Hackathon_HolidaysMY_vShared.csv", 
+head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"), 
                                        header = TRUE,
-                                       sep = ",")
+                                       sep = ","))
 ```
 
 Some information about holidays, we should search each period and merge the information
+
+
+Merging data sets....
+Note: Due to the immense data frame size, we are forced to work piecewise, otherwise
+our machines will not able to function well. 
+We will subset the data frames in years in order to keep them more manageable
+Note: Since the transactions go from 2020.01.01 to 2022.12.31, it has been 
+decided to remove the dates that were present concerning dates not in the 
+scrutinized timespan
+
+```{r}
+cpi.df.period <- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
+
+promotion.df.period <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
+
+```
+Now we will split the data frames into 2020, 2021, and 2022
+```{r}
+# Creating a function since it will be used more times called "splitting_years"
+
+splitting_years <- function(x,start,end){
+  return(df <- x[between(cpi.df.period$Date_daily, 
+                         as.POSIXct(start), 
+                         as.POSIXct(end)),])
+}
+
+# For Consumer Price Index
+cpi2020 <- splitting_years(cpi.df.period, "2020-01-01", "2020-12-31")
+cpi2021 <- splitting_years(cpi.df.period, "2021-01-01", "2021-12-31")
+cpi2022 <- splitting_years(cpi.df.period, "2022-01-01", "2022-12-31")
+
+# For promotions
+
+promotion2020 <- splitting_years(promotion.df.period, "2020-01-01", "2020-12-31")
+promotion2021 <- splitting_years(promotion.df.period, "2021-01-01", "2021-12-31")
+promotion2022 <- splitting_years(promotion.df.period, "2022-01-01", "2022-12-31")
+
+# For transactions
+
+transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
+transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
+transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
+
+```
+
