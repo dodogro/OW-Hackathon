@@ -216,9 +216,48 @@ head(transaction.df <- read.table(paste0(path,
                                   sep = ","))
 ```
 
+
+Check what 23978 missing values are treated as characters
+```{r}
+test1 <- transaction.df$TransactionDate
+test2 <- transaction.df$TransactionDate
+
+test1 <- as.POSIXct(test1,
+                    format = "%Y-%m-%d",
+                    tz = "")
+
+verifica <- test2[which(is.na(test1))]
+
+head(verifica)
+```
+
+Testing if the same problem is replicated also for other character variables different from date
+```{r}
+names(transaction.df)
+length(which(transaction.df$DayOfWeek == ""))
+length(which(transaction.df$WeekendFlag == ""))
+```
+
+A recurrent pattern of "" for 23978 observation is present
+-> Deleting those observations from the dataset
+
+```{r}
+transaction.df <- transaction.df %>% 
+  filter(TransactionDate != "")
+```
+
+OK
+
+Checking again the summary
+```{r}
+summary(transaction.df)
+```
+There are still 72125 missing values in ActualSales
+
 ```{r}
 str(transaction.df)
 ```
+
 Trasforming TransactionDate into POSIXct format (it takes a while)
 ```{r}
 head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
@@ -227,6 +266,7 @@ head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate
                                               Sys.timezone(location = TRUE))))
 
 ```
+
 Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
 ```{r}
 transaction.df$DayOfWeek <- as.factor(transaction.df$DayOfWeek)
@@ -341,4 +381,3 @@ colnames(cpi2020)[3] <- "TransactionDate"
 final2020 <- merge(d, cpi2020, by = "TransactionDate")
 
 ```
-
