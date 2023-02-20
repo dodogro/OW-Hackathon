@@ -266,11 +266,8 @@ transaction.promotion.df$PromotionKey <- as.factor(transaction.promotion.df$Prom
 
 ```{r}
 summary(transaction.promotion.df)
-
 ```
-
 OK
-
 _____________________________________
 # Holiday
 
@@ -299,13 +296,18 @@ promotion.df.period <- promotion.df[between(promotion.df$PromotionStartDate, as.
 ```
 Now we will split the data frames into 2020, 2021, and 2022
 ```{r}
-# Creating a function since it will be used more times called "splitting_years"
+# Creating a function "splitting_years" since it will be used more times called
 
 splitting_years <- function(x,start,end){
-  return(df <- x[between(cpi.df.period$Date_daily, 
-                         as.POSIXct(start), 
-                         as.POSIXct(end)),])
+    for (i in length(colnames(x))){
+      if (is.Date(x[i]) == TRUE){
+        return(df <- x[between(x[i], 
+                     as.POSIXct(start), 
+                     as.POSIXct(end)),])
+    }
+  }
 }
+
 
 # For Consumer Price Index
 cpi2020 <- splitting_years(cpi.df.period, "2020-01-01", "2020-12-31")
@@ -313,16 +315,28 @@ cpi2021 <- splitting_years(cpi.df.period, "2021-01-01", "2021-12-31")
 cpi2022 <- splitting_years(cpi.df.period, "2022-01-01", "2022-12-31")
 
 # For promotions
-
 promotion2020 <- splitting_years(promotion.df.period, "2020-01-01", "2020-12-31")
 promotion2021 <- splitting_years(promotion.df.period, "2021-01-01", "2021-12-31")
 promotion2022 <- splitting_years(promotion.df.period, "2022-01-01", "2022-12-31")
 
 # For transactions
-
 transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
 transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
+
+```
+
+Creating the 3 full data sets
+Let's start from 2020
+```{r}
+a <- merge(transactions2020, product.df, by = "ProductKey") 
+b <- merge(a, store.df, by = "StoreKey")
+c <- merge(b, transaction.promotion.df)
+d <- merge(c, promotion2020, by = "PromotionKey")
+
+# Changing the name of Date_daily to perform merge
+colnames(cpi2020)[3] <- "TransactionDate"
+final2020 <- merge(d, cpi2020, by = "TransactionDate")
 
 ```
 
