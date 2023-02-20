@@ -300,12 +300,14 @@ Now we will split the data frames into 2020, 2021, and 2022
 
 splitting_years <- function(x,start,end){
     for (i in length(colnames(x))){
-      if (is.Date(x[i]) == TRUE){
-        return(df <- x[between(x[i], 
+      if (is.Date(x[,i]) == TRUE){
+        df <- x[between(x[,i], 
                      as.POSIXct(start), 
-                     as.POSIXct(end)),])
+                     as.POSIXct(end)),]
+        
     }
-  }
+    }
+  return(df)
 }
 
 
