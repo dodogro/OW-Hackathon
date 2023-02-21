@@ -10,8 +10,13 @@ path = "../Data-OW/"
 ```
 
 Importing libraries
-```{r Importing Libraries}
-pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard)
+```{r Importing Libraries and parameters setting}
+pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
+               shiny, ggplot2)
+
+# Removing scientific notation
+
+options(scipen=999)
 ```
 
 ___________________________________________________
@@ -331,6 +336,7 @@ Transforming TransactionDate into POSIXct format
 transaction.promotion.df$TransactionDate <- as.POSIXct(transaction.promotion.df$TransactionDate,
                                                        format = "%Y-%m-%d")
 
+
 ```
 
 Transforming StoreKey, ProductKey and Promotion Key into factors
@@ -343,7 +349,22 @@ transaction.promotion.df$PromotionKey <- as.factor(transaction.promotion.df$Prom
 ```{r Overview}
 summary(transaction.promotion.df)
 ```
-OK
+```{r Creating splitting function specifically for transaction.df}
+
+splitting_years <- function(transaction.df,start,end){
+        return(transaction.df[between(transaction.df$TransactionDate, 
+               as.POSIXct(start), 
+               as.POSIXct(end)),])
+  }
+```
+
+Removing 2012 relative data
+```{r}
+summary(transaction.df <- splitting_years(transaction.df, "2020-01-01","2022-12-31"))
+
+# Now it's OK
+```
+
 _____________________________________
 # Holiday
 
@@ -352,8 +373,7 @@ head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"),
                                        header = TRUE,
                                        sep = ","))
 ```
-
-Some information about holidays, we should search each period and merge the information
+Why and whihc holidays could be important? We should search each period and merge the information
 
 
 Merging data sets....
@@ -371,18 +391,66 @@ promotion.df.period <- promotion.df[between(promotion.df$PromotionStartDate, as.
 
 ```
 Now we will split the data frame transaction into 2020, 2021, and 2022
-```{r}
-# Creating a function "splitting_years" since it will be used multiple times 
-
-splitting_years <- function(transaction.df,start,end){
-        return(transaction.df[between(transaction.df$TransactionDate, 
-               as.POSIXct(start), 
-               as.POSIXct(end)),])}
+```{r Splitting transaction.df in years}
         
-
 # For transactions
 transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
 transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
-
 ```
+
+# Interactive Dashboard
+```{r Interactive Dashboard}
+
+# Trial 
+sales_volumes <- transaction.df %>% 
+  select(TransactionDate, ActualSales) %>% 
+  group_by(TransactionDate) %>% 
+  summarise(Daily_Mean = mean(ActualSales),
+            Daily_Sum = sum(ActualSales))
+
+
+ui <- fluidPage(
+  titlePanel(h2("Sales_Volumes",align = "center")),
+  sidebarLayout(    
+    sidebarPanel(
+
+      sliderInput(inputId = "",
+                        "Dates:",
+                        min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
+                        max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
+                        value = c(min(transaction.df$TransactionDate), 
+                                  max(transaction.df$TransactionDate)),
+                        timeFormat="%Y-%m-%d")),
+    mainPanel(
+      plotOutput("Sales_Volumes"),
+      verbatimTextOutput("Summary")))
+    )
+
+server <- shinyServer(
+
+  function(input,output){
+
+    datasetInput <- reactive({
+      sales_volumes %>% filter(TransactionDate == input$dataset)
+    })
+
+
+    # Generate a summary of the dataset ----
+    output$summary <- renderPrint({
+      dataset <- datasetInput()
+      summary(dataset$Daily_Sum)
+    })
+
+    # plot time series
+    output$Sales_Volumes <- renderPlot({
+
+      dataset <- datasetInput()
+      ggplot(dataset, aes(x = TransactionDate, y=Daily_Sum)) + geom_line()
+
+    })
+  })
+
+shiny::shinyApp(ui = ui, server = server)
+```
+
