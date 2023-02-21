@@ -11,7 +11,7 @@ path = "../Data-OW/"
 
 Importing libraries
 ```{r}
-pacman::p_load(readxl, lubridate, dplyr, timechange)
+pacman::p_load(readxl, lubridate, dplyr, timechange, stringr)
 ```
 
 ___________________________________________________
@@ -25,7 +25,7 @@ str(product.df)
 ```
 
 Cleaning ProductKey Column
-Note: (i?) is used to render the match case insensitive
+Note on RegEx: (i?) is used to render the match case insensitive
 ```{r}
 product.df$ProductKey <- gsub("(i?)key_", "", product.df$ProductKey)
 length(product.df$ProductKey)
@@ -33,15 +33,19 @@ length(product.df$ProductKey)
 # OK
 ```
 
-Cleaning Product Sub-Category column. Indeed, lv2. has some categories that needs to  
-be transformed from lower case to upper case before the substitution
+Cleaning Product Sub-Category column. Indeed, lv2. has some categories that needs to be transformed from lower case to upper case before the substitution.
+Note on RegEx used: - (\\w*) = takes every word up to infinite times
+                    - (\\s)  = considers the first space present in the string
+                    - Combination of the two = Take all the words before a space (included)
 ```{r}
-product.df$ProductCategory_Lvl1 <- toupper(gsub("(\\w*\\s+)", "", 
+product.df$ProductCategory_Lvl1 <- toupper(gsub("(\\w*\\s)", "", 
                                         product.df$ProductCategory_Lvl1))
 
-product.df$ProductCategory_Lvl2 <- toupper(gsub("(\\w*\\s+)", "", 
+product.df$ProductCategory_Lvl2 <- toupper(gsub("(\\w*\\s)", "", 
                                         product.df$ProductCategory_Lvl2))
 
+# toUpper has been used in order as remedy to the difference in case present
+# in the vectors
 ```
 
 Transforming categories into factors
@@ -111,8 +115,10 @@ colnames(cpi.df1) <- c("Date_monthly",
 
 Clearing the environment and final check
 ```{r}
+# For sake of keeping the same data sets' names
 cpi.df <- cpi.df1
 remove(cpi.df1)
+
 # Final check
 str(cpi.df)
 
@@ -182,15 +188,18 @@ store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
 
 
 Adjusting StoreType and transforming it into factor
+Note on RegEx: (\S+\s\S+) serves two take the first two words in the string, where \\S+ is the negation of \s, thus taking all the words excluding the space and \\s considers exactly the spaces. The combination takes thus exactly the first two words before a second space 
 ```{r}
-store.df$StoreType <- gsub("Store Type ", "", store.df$StoreType)
+store.df$StoreType <- gsub("(\\S+\\s\\S+)", "", store.df$StoreType)
 store.df$StoreType <- as.factor(store.df$StoreType)
 ```
 
 Adjusting Region_lvl 1 and 2 and transforming into factors
+Note on RegEx: - [A-Z](?!.*[A-Z].* takes just the last capital letter
+               - \\d+ is takes just the first group of number
 ```{r}
-store.df$Region_Lvl1 <- gsub("Region", "", store.df$Region_Lvl1)
-store.df$Region_Lvl2 <- gsub("Region ", "", store.df$Region_Lvl2)
+store.df$Region_Lvl1 <- str_extract(store.df$Region_Lvl1, "[A-Z](?!.*[A-Z].*)")
+store.df$Region_Lvl2 <- str_extract(store.df$Region_Lvl2, "\\d+")
 
 store.df$Region_Lvl1 <- as.factor(store.df$Region_Lvl1)
 store.df$Region_Lvl2 <- as.factor(store.df$Region_Lvl2)
@@ -217,6 +226,33 @@ head(transaction.df <- read.table(paste0(path,
 ```
 
 
+
+```{r}
+str(transaction.df)
+```
+
+Trasforming TransactionDate into POSIXct format (it takes a while)
+```{r}
+head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
+                                              format = "%Y-%m-%d",
+                                              tz = time_at_tz(
+                                              Sys.timezone(location = TRUE))))
+
+```
+
+Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
+```{r}
+transaction.df$DayOfWeek <- as.factor(transaction.df$DayOfWeek)
+transaction.df$WeekendFlag <- as.factor(transaction.df$WeekendFlag)
+transaction.df$StoreKey <- as.factor(transaction.df$StoreKey)
+transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
+```
+
+```{r}
+summary(transaction.df)
+```
+
+# 23978 missing values
 Check what 23978 missing values are treated as characters
 ```{r}
 test1 <- transaction.df$TransactionDate
@@ -243,10 +279,10 @@ A recurrent pattern of "" for 23978 observation is present
 
 ```{r}
 transaction.df <- transaction.df %>% 
-  filter(TransactionDate != "")
+  filter(as.character(TransactionDate) != "")
 ```
 
-OK
+
 
 Checking again the summary
 ```{r}
@@ -254,32 +290,34 @@ summary(transaction.df)
 ```
 There are still 72125 missing values in ActualSales
 
+# 72125 missing ActualSales
+
 ```{r}
-str(transaction.df)
+test1 <- transaction.df %>% 
+  filter(is.na(transaction.df$ActualSales))
+
+summary(test1)
 ```
 
-Trasforming TransactionDate into POSIXct format (it takes a while)
-```{r}
-head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
-                                              format = "%Y-%m-%d",
-                                              tz = time_at_tz(
-                                              Sys.timezone(location = TRUE))))
+By comparing the two summaries we can see that the full dataset entails SalesDiscount both negative and positive while the subset of transactions where the "ActualSales" are missing has only negative discounts.
+-> We can derive: ActualSales = RetailFullPrice + (-SalesDiscount)
+since SalesDiscount for missing ActualSales has only negative values
 
+We will later explore positive values of sales discount
+
+Deriving missing ActualSales
+```{r}
+transaction.df$ActualSales[is.na(transaction.df$ActualSales)] <- transaction.df$RetailFullPrice[is.na(transaction.df$ActualSales)] 
++ transaction.df$SalesDiscount[is.na(transaction.df$ActualSales)]
 ```
 
-Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
-```{r}
-transaction.df$DayOfWeek <- as.factor(transaction.df$DayOfWeek)
-transaction.df$WeekendFlag <- as.factor(transaction.df$WeekendFlag)
-transaction.df$StoreKey <- as.factor(transaction.df$StoreKey)
-transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
-```
-
+Checking again the summary
 ```{r}
 summary(transaction.df)
 ```
-23978 missing transactions: Imputing or removing?
+No more missing values 
 
+OK
 ________________________________________________________________________________
 # Trasaction Promotion Dataset
 
@@ -365,19 +403,5 @@ promotion2022 <- splitting_years(promotion.df.period, "2022-01-01", "2022-12-31"
 transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
 transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
-
-```
-
-Creating the 3 full data sets
-Let's start from 2020
-```{r}
-a <- merge(transactions2020, product.df, by = "ProductKey") 
-b <- merge(a, store.df, by = "StoreKey")
-c <- merge(b, transaction.promotion.df)
-d <- merge(c, promotion2020, by = "PromotionKey")
-
-# Changing the name of Date_daily to perform merge
-colnames(cpi2020)[3] <- "TransactionDate"
-final2020 <- merge(d, cpi2020, by = "TransactionDate")
 
 ```
