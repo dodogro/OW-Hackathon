@@ -12,7 +12,7 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2)
+               shiny, ggplot2, shinythemes)
 
 # Removing scientific notation
 
@@ -403,82 +403,36 @@ sales_volumes <- transaction.df %>%
   select(TransactionDate, ActualSales) %>% 
   group_by(TransactionDate) %>% 
   summarise(Daily_Mean = mean(ActualSales),
-            Daily_Sum = sum(ActualSales))
+            Daily_Sum = sum(ActualSales)) %>% 
+  filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
+```{r UI-Creation}
 
-```{r Interactive Dashboard}
-ui <- fluidPage(
-  fluidRow(column(width = 2, "Inputs", style = "background-color = blue"),
-           column(width = 10, "Plot", style = "background-color = green")),
-  titlePanel(h2("Sales_Volumes", align = "center")),
-  sidebarLayout(    
-    sidebarPanel(
-
-      sliderInput(inputId = "Time", label = "Dates:",
-                   min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
-                   max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
-                   value = c(min(transaction.df$TransactionDate), 
-                             max(transaction.df$TransactionDate)),
-                   timeFormat="%Y-%m-%d",
-                   timezone = "+0100")),
-    mainPanel(
-      plotOutput("Sales_Volumes"),
-      )
+Navbars <- fluidPage(theme = shinytheme("darkly"),
+  navbarPage( 
+  title = "OW - Hackatow",
+  tabPanel("Exploratory Analysis",
+           sidebarPanel(
+             tags$h3("Slicers"), # "h3" is the heading's size
+             sliderInput(inputId = "Time", # Creating the slider on the side 
+                         label = "Date",
+                  min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
+                  max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
+                  value = c(min(sales_volumes$TransactionDate), 
+                            max(sales_volumes$TransactionDate)),
+                  timeFormat="%Y-%m-%d",
+                  timezone = "+0100")
+             ),
+           mainPanel(
+             plotOutput(outputId = "Sales_Volumes")          
+             )
+           )
     )
   )
 
-server <- shinyServer(
 
-  function(input,output){
-
-    datasetInput <- reactive({
-      sales_volumes %>% 
-        filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2])
-    })
-
-
-    # Generate a summary of the dataset ----
-    # output$summary <- renderPrint({
-      # dataset <- datasetInput()
-      # summary(dataset$Daily_Sum)
-    # })
-
-    # plot time series
-    output$Sales_Volumes <- renderPlot({
-      if (length(row.names(datasetInput())) == 0) {
-        print("Values are not available") 
-        }
-      myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) + geom_line()
-      print(myplot)
-    }, 
-    height = 600, width = 1000
-    )
-  })
-
-shinyApp(ui, server)
-```
-
-
-```{r UI-Creation}
-# Header
-header <- dashboardHeader(title = "OW-Hackatow-Dashboard")
-
-# Sidebar
-sidebar <- dashboardSidebar()
-
-# Dashboard
-body <- dashboardBody(
-  box(plotOutput("TimeSeries_Sales",width = 8)),
-  box(sliderInput(inputId = "Time", label = "Dates:",
-                  min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
-                  max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
-                  value = c(min(transaction.df$TransactionDate), 
-                             max(transaction.df$TransactionDate)),
-                  timeFormat="%Y-%m-%d",
-                  timezone = "+0100")))
-
-ui <- dashboardPage(header, sidebar, body)
+(ui <- dashboardPage(Navbars))
 
 ```
 
@@ -490,15 +444,17 @@ server <- function(input, output){
         filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2])
     })
   
-  output$TimeSeries_Sales <- renderPlot({
-    myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) + geom_line()
-    print(myplot)
+  output$Sales_Volumes <- renderPlot({
+    print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
+          geom_line()
+    )
+    
   })
 }
 
 ```
 
 ```{r Dasboard at Galnce}
-shinyApp(ui, server)
+shinyApp(Navbars, server)
 ```
 
