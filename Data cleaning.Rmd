@@ -373,21 +373,18 @@ head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"),
                                        header = TRUE,
                                        sep = ","))
 ```
-Why and whihc holidays could be important? We should search each period and merge the information
+Why and which holidays could be important? We should search each period and merge the information
 
 
-Merging data sets....
+# Merging data sets
 Note: Due to the immense data frame size, we are forced to work piecewise, otherwise
-our machines will not able to function well. 
-We will subset the data frames in years in order to keep them more manageable
-Note: Since the transactions go from 2020.01.01 to 2022.12.31, it has been 
-decided to remove the dates that were present concerning dates not in the 
+our machines will not able to function well. Moreover, since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
 scrutinized timespan
 
 ```{r Date as.Date}
-cpi.df.period <- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
+cpi.df<- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
 
-promotion.df.period <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
+promotion.df <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
 
 ```
 Now we will split the data frame transaction into 2020, 2021, and 2022
@@ -401,56 +398,107 @@ transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
 
 # Interactive Dashboard
 ```{r Interactive Dashboard}
-
 # Trial 
 sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales) %>% 
   group_by(TransactionDate) %>% 
   summarise(Daily_Mean = mean(ActualSales),
             Daily_Sum = sum(ActualSales))
+```
 
 
+```{r Interactive Dashboard}
 ui <- fluidPage(
-  titlePanel(h2("Sales_Volumes",align = "center")),
+  fluidRow(column(width = 2, "Inputs", style = "background-color = blue"),
+           column(width = 10, "Plot", style = "background-color = green")),
+  titlePanel(h2("Sales_Volumes", align = "center")),
   sidebarLayout(    
     sidebarPanel(
 
-      sliderInput(inputId = "",
-                        "Dates:",
-                        min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
-                        max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
-                        value = c(min(transaction.df$TransactionDate), 
-                                  max(transaction.df$TransactionDate)),
-                        timeFormat="%Y-%m-%d")),
+      sliderInput(inputId = "Time", label = "Dates:",
+                   min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
+                   max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
+                   value = c(min(transaction.df$TransactionDate), 
+                             max(transaction.df$TransactionDate)),
+                   timeFormat="%Y-%m-%d",
+                   timezone = "+0100")),
     mainPanel(
       plotOutput("Sales_Volumes"),
-      verbatimTextOutput("Summary")))
+      )
     )
+  )
 
 server <- shinyServer(
 
   function(input,output){
 
     datasetInput <- reactive({
-      sales_volumes %>% filter(TransactionDate == input$dataset)
+      sales_volumes %>% 
+        filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2])
     })
 
 
     # Generate a summary of the dataset ----
-    output$summary <- renderPrint({
-      dataset <- datasetInput()
-      summary(dataset$Daily_Sum)
-    })
+    # output$summary <- renderPrint({
+      # dataset <- datasetInput()
+      # summary(dataset$Daily_Sum)
+    # })
 
     # plot time series
     output$Sales_Volumes <- renderPlot({
-
-      dataset <- datasetInput()
-      ggplot(dataset, aes(x = TransactionDate, y=Daily_Sum)) + geom_line()
-
-    })
+      if (length(row.names(datasetInput())) == 0) {
+        print("Values are not available") 
+        }
+      myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) + geom_line()
+      print(myplot)
+    }, 
+    height = 600, width = 1000
+    )
   })
 
-shiny::shinyApp(ui = ui, server = server)
+shinyApp(ui, server)
+```
+
+
+```{r UI-Creation}
+# Header
+header <- dashboardHeader(title = "OW-Hackatow-Dashboard")
+
+# Sidebar
+sidebar <- dashboardSidebar()
+
+# Dashboard
+body <- dashboardBody(
+  box(plotOutput("TimeSeries_Sales",width = 8)),
+  box(sliderInput(inputId = "Time", label = "Dates:",
+                  min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
+                  max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
+                  value = c(min(transaction.df$TransactionDate), 
+                             max(transaction.df$TransactionDate)),
+                  timeFormat="%Y-%m-%d",
+                  timezone = "+0100")))
+
+ui <- dashboardPage(header, sidebar, body)
+
+```
+
+```{r Server Creation}
+server <- function(input, output){
+  
+  datasetInput <- reactive({
+      sales_volumes %>% 
+        filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2])
+    })
+  
+  output$TimeSeries_Sales <- renderPlot({
+    myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) + geom_line()
+    print(myplot)
+  })
+}
+
+```
+
+```{r Dasboard at Galnce}
+shinyApp(ui, server)
 ```
 
