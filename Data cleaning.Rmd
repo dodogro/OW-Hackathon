@@ -12,7 +12,7 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2, shinythemes)
+               shiny, ggplot2)
 
 # Removing scientific notation
 
@@ -87,7 +87,15 @@ Understanding type of variables
 str(cpi.df)
 ```
 
-Date columns are already in POSIXct format, no need for change
+Setting up the date format for CPI
+```{r Date format induction}
+cpi.df$Date_daily <- as.character(cpi.df$Date_daily)
+cpi.df$Date_daily <- as.POSIXct(cpi.df$Date_daily, 
+                                format = "%Y-%m-%d",
+                                tz = time_at_tz(
+                                  Sys.timezone(location = TRUE)))
+```
+
 
 ```{r Overview}
 summary(cpi.df)
@@ -109,7 +117,10 @@ cpi.df1 <- cpi.df1 %>%
   select(Date_monthly1, CPI_monthly1, Date_daily, CPI_daily)
 
 # Creating the date format for Date_monthly1
-cpi.df1$Date_monthly1 <- as.POSIXct(cpi.df1$Date_monthly1)
+cpi.df1$Date_monthly1 <- as.POSIXct(cpi.df1$Date_monthly1,
+                                    format = "%Y-%m-%d",
+                                    tz = time_at_tz(
+                                      Sys.timezone(location = TRUE)))
 
 # Correcting columns name
 colnames(cpi.df1) <- c("Date_monthly",
@@ -151,10 +162,14 @@ promotion.df$PromotionKey <- as.character(promotion.df$PromotionKey)
 Transforming Promotion Dates into POSIXct formats
 ```{r Dates as.Date}
 promotion.df$PromotionStartDate <- as.POSIXct(promotion.df$PromotionStartDate,
-                                              format = "%m/%d/%Y")
+                                              format = "%m/%d/%Y",
+                                              tz = time_at_tz(
+                                                Sys.timezone(location = TRUE)))
 
 promotion.df$PromotionEndDate <- as.POSIXct(promotion.df$PromotionEndDate,
-                                            format = "%m/%d/%Y")
+                                            format = "%m/%d/%Y",
+                                            tz = time_at_tz(
+                                              Sys.timezone(location = TRUE)))
 ```
 
 Transforming promotion mechanics into factor
@@ -229,18 +244,25 @@ head(transaction.df <- read.table(paste0(path,
                                   sep = ","))
 ```
 
-
-
 ```{r Overview}
 str(transaction.df)
 ```
+During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding
+```{r StoreKey adjustment}
+transaction.df$StoreKey <- gsub("_Key", "", transaction.df$StoreKey)
+```
+
+```{r ProductKey adjustment}
+transaction.df$ProductKey <- gsub("Key", "", transaction.df$ProductKey)
+```
+
 
 Trasforming TransactionDate into POSIXct format (it takes a while)
 ```{r Dates as.Date}
 head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
                                               format = "%Y-%m-%d",
                                               tz = time_at_tz(
-                                              Sys.timezone(location = TRUE))))
+                                                Sys.timezone(location = TRUE))))
 
 ```
 
@@ -321,6 +343,10 @@ summary(transaction.df)
 ```
 No more missing values 
 
+```{r}
+remove(test1)
+```
+
 OK
 ________________________________________________________________________________
 # Trasaction Promotion Data set
@@ -334,7 +360,9 @@ head(transaction.promotion.df <-read.table(paste0(path,
 Transforming TransactionDate into POSIXct format
 ```{r Dates as.Date}
 transaction.promotion.df$TransactionDate <- as.POSIXct(transaction.promotion.df$TransactionDate,
-                                                       format = "%Y-%m-%d")
+                                                       format = "%Y-%m-%d",
+                                                       tz = time_at_tz(
+                                                         Sys.timezone(location = TRUE)))
 
 
 ```
@@ -349,12 +377,19 @@ transaction.promotion.df$PromotionKey <- as.factor(transaction.promotion.df$Prom
 ```{r Overview}
 summary(transaction.promotion.df)
 ```
+
 ```{r Creating splitting function specifically for transaction.df}
 
 splitting_years <- function(transaction.df,start,end){
         return(transaction.df[between(transaction.df$TransactionDate, 
-               as.POSIXct(start), 
-               as.POSIXct(end)),])
+               as.POSIXct(start,
+                          format = "%Y-%m-%d",
+                          tz = time_at_tz(
+                            Sys.timezone(location = TRUE))), 
+               as.POSIXct(end,
+                          format = "%Y-%m-%d",
+                          tz = time_at_tz(
+                            Sys.timezone(location = TRUE)))),])
   }
 ```
 
@@ -387,6 +422,7 @@ cpi.df<- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct(
 promotion.df <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
 
 ```
+
 Now we will split the data frame transaction into 2020, 2021, and 2022
 ```{r Splitting transaction.df in years}
         
@@ -396,6 +432,108 @@ transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
 ```
 
+__________________________________________________________________________-
+# Transactions2020
+
+Now I can merge the subsets
+```{r Merging 2020 transactions with all information}
+# CPI
+transactions2020 <- left_join(transactions2020, 
+                              cpi.df,
+                              by = c("TransactionDate" = "Date_daily"))
+
+# Store
+transactions2020 <- left_join(transactions2020,
+                              store.df,
+                              by = "StoreKey")
+
+# Product
+transactions2020 <- left_join(transactions2020,
+                              product.df,
+                              by = "ProductKey")
+
+# Promotion Key
+transactions2020 <- left_join(transactions2020,
+                              transaction.promotion.df,
+                              by = c("TransactionDate", "StoreKey", "ProductKey"))
+
+# Promotion
+transactions2020 <- left_join(transactions2020,
+                              promotion.df,
+                              by = "PromotionKey")
+
+```
+
+```{r Saving backup}
+save(transactions2020, file = "transactions2020.RData")
+```
+
+## Exploration of missing values
+
+IMPORTANT PREMISE:
+The keys adjustments were done during the process of data transformation of the transaction.df, as a result the code that as a comment reported missing values should now report no missing values
+
+```{r Summary}
+summary(transactions2020)
+```
+
+14091 missing DistributionChannel and StoreType
+```{r Missing distribution channels and store type}
+head(unique(transactions2020$StoreKey[which(is.na(transactions2020$StoreType))]), 20)
+```
+
+It appears that "transaction.df" needs a correction in the way data are expressed
+The same mistake is probably done also for "ProductKey"
+
+11138 missing BrandKey, SupplierKey, ProductCategory
+```{r Missing BrandKey}
+head(unique(transactions2020$ProductKey[which(is.na(transactions2020$BrandKey))]), 20)
+```
+
+Final missing values check
+```{r}
+any(is.na(transactions2020[,1:20]))
+```
+
+No missing values in the first 20 columns
+
+Now I have to check why I have a mismatch in PromotionKey. Apparently there are some promotions that have a key but no related information
+
+```{r}
+length(which(is.na(transactions2020$PromotionKey)))
+```
+
+2179539 transactions in 2020 were done without promotion
+
+Now I'm looking for the number of transactions that don't have a PromoMechanic but actually have a PromotionKey
+```{r Number of no info promotion}
+length(which(is.na(transactions2020$PromoMechanic[which(!is.na(transactions2020$PromotionKey))]))) 
+```
+
+281583 transactions were done with a promotion but there are no information related
+
+```{r Further exploration of promotions missing values}
+noinfo_promo <- transactions2020 %>% 
+  filter(!is.na(PromotionKey)) %>% 
+  filter(is.na(PromoMechanic)) %>% 
+  select(ProductKey, PromotionKey, PromoMechanic, TransactionDate)
+
+# Check the mismatch
+mismatch <- left_join(promotion.df, 
+                      noinfo_promo,
+                      by = "PromotionKey")
+
+any(!is.na(mismatch$ProductKey)) # No match detected 
+
+remove(noinfo_promo, mismatch)
+```
+
+Why some promotions don't have the correspondent informations? What can we do about them?
+
+
+
+
+_________________________________________________________
 # Interactive Dashboard
 ```{r Interactive Dashboard}
 # Trial 
