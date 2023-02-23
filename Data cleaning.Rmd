@@ -12,7 +12,8 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets)
+               shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
+               vtable)
 
 # Removing scientific notation
 
@@ -248,7 +249,7 @@ str(transaction.df)
 ```
 During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding
 ```{r StoreKey adjustment}
-transaction.df$StoreKey <- gsub("_Key", "", transaction.df$StoreKey)
+transaction.df$StoreKey <-  gsub("_Key", "", transaction.df$StoreKey)
 ```
 
 ```{r ProductKey adjustment}
@@ -435,7 +436,7 @@ transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
 __________________________________________________________________________-
 # Transactions2020
 
-Now I can merge the subsets
+Now it is possible to merge the subsets
 ```{r Merging 2020 transactions with all information}
 # CPI
 transactions2020 <- left_join(transactions2020, 
@@ -545,10 +546,11 @@ transaction.promotion.df <- transaction.promotion.df[sample(length(transaction.p
 
 transaction.df.1 <- merge(transaction.df.s, store.df)
 transaction.df.2 <- merge(transaction.df.1, transaction.promotion.df) # This merge increments the rows length by a factor of 10^5....we need to find a solution
-transaction.df.m <- merge(transaction.df.2, promotion.df)
+
+transaction.df.m <- merge(transaction.df, store.df)
 
 sales_volumes <- transaction.df.m %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, StoreKey, PromoMechanic) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
@@ -571,32 +573,31 @@ ui <- fluidPage(
                   timezone = "+0100"),
              
              checkboxGroupInput(inputId = "Channel",
-                         label = "Channel", 
-                         selected = "Online",
-                         choices = unique(sales_volumes$DistributionChannel)),
-             
-             # pickerInput(inputId = "StoreKey",
-             #             label = "Store",
-             #             choices = levels(sales_volumes$StoreKey),
-             #             multiple = TRUE,
-             #             options = list(`actions-box` = TRUE)
-             #                  ),
+                         label = "Channel",
+                         choices = c("Online", "Physical"),
+                         selected = c("Online", "Physical")),
              
              downloadButton(outputId = "report", 
                             label = "Generate report")
              ),
            mainPanel(
-            tabsetPanel(
-              tabPanel(title = "Aggregate Sales Volumes",
-                       plotOutput(outputId = "SalesVolumes"),
-              tabPanel(title = "Volmes by PromoMechanic",
+            tabsetPanel(type = "tabs",
+              tabPanel(#splitLayout(cellWidths = c("60%", "20%", "20%")),
+                tags$p("Aggregate Sales Volumes"),
+                plotOutput(outputId = "SalesVolumes"),
+                tags$p("Summary Statistics"),
+                box(verbatimTextOutput(outputId = "Summary")),
+                tags$p("Values of Interest"),
+                box(verbatimTextOutput(outputId = "Totals"))),
+              
+              tabPanel(title = "Volumes by PromoMechanic",
                        plotOutput(outputId = "PromotionMechanism"))
              )
            )
         )
       )
     )
-  )
+    
 
 ```
 
@@ -606,37 +607,65 @@ server <- function(input, output){
   datasetInput <- reactive({
       sales_volumes %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-      filter(DistributionChannel == input$Channel) %>% 
-    # filter(StoreKey == input$StoreKey) %>% 
+      filter(DistributionChannel %in% input$Channel) %>% 
       group_by(TransactionDate) %>% 
       summarise(Daily_Mean = mean(ActualSales),
-                Daily_Sum = sum(ActualSales))
+                Daily_Sum = sum(ActualSales),
+                Daily_Discount = -sum(SalesDiscount))
     })
   
   output$SalesVolumes <- renderPlot({
     if (length(row.names(datasetInput())) == 0) {print("Values are not available")}
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
             geom_line(color = "deepskyblue4") + 
-            theme(panel.grid.major = element_blank(),
+            #geom_line(aes(x = TransactionDate, 
+             #             y = Daily_Discount*(mean(Daily_Sum)/mean(Daily_Discount))),
+              #        color = "yellow4") +
+            #scale_y_continuous(
+            # Features of the first axis
+            #name = "AggregateSales",
+            # Add a second axis and specify its features
+            #sec.axis = sec_axis(~.*mean(Daily_Sum)/mean(Daily_Discount), 
+            #name="AggregateDiscount")) +
+            theme(# panel.grid.major = element_blank(),
                   # axis.line = element_line(colour = "black"),
                   axis.title.x = element_blank(),
                   axis.title.y = element_blank(),
                   panel.background = element_rect(fill=NA),
-                  plot.background = element_rect(fill=NA))
-    )
+                  plot.background = element_rect(fill=NA)))
   })
   
-  datasetInput2 <- reactive({
+  output$Summary <- renderPrint({
+    summary(datasetInput()[,2:3])
+  
+    })
+  
+   output$Totals <- renderPrint({
+     df <- cbind(sum(datasetInput()$Daily_Sum),
+                sum(datasetInput()$Daily_Discount))
+     colnames(df) <- c("Aggregate Volumes", "Aggregate Discount")
+     print(df)
+   })
+}
+
+```
+
+```{r Dasboard at Glance}
+shinyApp(ui, server)
+```
+
+```{r}
+# Da RI-guardare bene...
+    datasetInput2 <- reactive({
       sales_volumes %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-      filter(DistributionChannel == input$Channel) %>% 
+      filter(DistributionChannel %in%  input$Channel) %>% 
     # filter(StoreKey == input$StoreKey) %>% 
-      group_by(PromoMechanic) %>% 
+    # group_by(PromoMechanic) %>% 
       summarise(Daily_Sum = sum(ActualSales))
     
     })
-  
-  output$PromotionMechanism <- renderPlot({
+    output$PromotionMechanism <- renderPlot({
     if (length(row.names(datasetInput2())) == 0) {print("Values are not available")}
     myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, y=Daily_Sum, fill=PromoMechanic)) +
     geom_bar(stat="identity", position=position_dodge()) +
@@ -650,11 +679,5 @@ server <- function(input, output){
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA))
   })
-}
 ```
-
-```{r Dasboard at Glance}
-shinyApp(ui, server)
-```
-
 
