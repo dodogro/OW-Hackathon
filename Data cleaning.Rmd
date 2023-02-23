@@ -12,7 +12,7 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2)
+               shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets)
 
 # Removing scientific notation
 
@@ -49,7 +49,7 @@ product.df$ProductCategory_Lvl1 <- toupper(gsub("(\\w*\\s)", "",
 product.df$ProductCategory_Lvl2 <- toupper(gsub("(\\w*\\s)", "", 
                                         product.df$ProductCategory_Lvl2))
 
-# toUpper has been used in order as remedy to the difference in case present
+# toUpper has been used as remedy to the difference in case present
 # in the vectors
 ```
 
@@ -100,9 +100,8 @@ cpi.df$Date_daily <- as.POSIXct(cpi.df$Date_daily,
 ```{r Overview}
 summary(cpi.df)
 ```
-Most of monthly data are missing, thus the information must be reconstructed starting from the daily data. We have noticed that the monthly CPI index is constructed 
-by simply taking the first-of-the-month index. Is it correct though? 
 
+Most of monthly data are missing, thus the information must be reconstructed starting from the daily data. We have noticed that the monthly CPI index is constructed by simply taking the first-of-the-month index. Is it correct though? 
 Idea: creating the correspondence between month and year, and computing the monthly CPI as the mean of the daily CPI
 
 ```{r Reproducing CPI monthly as daily average}
@@ -209,6 +208,7 @@ store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
 
 Adjusting StoreType and transforming it into factor
 Note on RegEx: (\S+\s\S+) serves two take the first two words in the string, where \\S+ is the negation of \s, thus taking all the words excluding the space and \\s considers exactly the spaces. The combination takes thus exactly the first two words before a second space 
+
 ```{r Cleaning miswritten data entries}
 store.df$StoreType <- gsub("(\\S+\\s\\S+)", "", store.df$StoreType)
 store.df$StoreType <- as.factor(store.df$StoreType)
@@ -233,7 +233,6 @@ as.data.frame(table(store.df$Region_Lvl2))
 ```
 
 OK
-
 _____________________________________
 # Trasaction Dataset
 
@@ -259,10 +258,11 @@ transaction.df$ProductKey <- gsub("Key", "", transaction.df$ProductKey)
 
 Trasforming TransactionDate into POSIXct format (it takes a while)
 ```{r Dates as.Date}
-head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate, 
-                                              format = "%Y-%m-%d",
-                                              tz = time_at_tz(
-                                                Sys.timezone(location = TRUE))))
+head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,format = "%Y-%m-%d",
+                                                  tz = time_at_tz(
+                                                Sys.timezone(location = TRUE))
+                                                )
+     )
 
 ```
 
@@ -478,6 +478,7 @@ summary(transactions2020)
 ```
 
 14091 missing DistributionChannel and StoreType
+
 ```{r Missing distribution channels and store type}
 head(unique(transactions2020$StoreKey[which(is.na(transactions2020$StoreType))]), 20)
 ```
@@ -497,7 +498,7 @@ any(is.na(transactions2020[,1:20]))
 
 No missing values in the first 20 columns
 
-Now I have to check why I have a mismatch in PromotionKey. Apparently there are some promotions that have a key but no related information
+Now we have to check why we have a mismatch in PromotionKey. Apparently there are some promotions that have a key but no related information
 
 ```{r}
 length(which(is.na(transactions2020$PromotionKey)))
@@ -505,7 +506,8 @@ length(which(is.na(transactions2020$PromotionKey)))
 
 2179539 transactions in 2020 were done without promotion
 
-Now I'm looking for the number of transactions that don't have a PromoMechanic but actually have a PromotionKey
+Now we are looking for the number of transactions that do not have a PromoMechanic but actually have a PromotionKey
+
 ```{r Number of no info promotion}
 length(which(is.na(transactions2020$PromoMechanic[which(!is.na(transactions2020$PromotionKey))]))) 
 ```
@@ -530,24 +532,30 @@ remove(noinfo_promo, mismatch)
 
 Why some promotions don't have the correspondent informations? What can we do about them?
 
-
-
-
 _________________________________________________________
 # Interactive Dashboard
 ```{r Interactive Dashboard}
 # Trial 
-sales_volumes <- transaction.df %>% 
-  select(TransactionDate, ActualSales) %>% 
-  group_by(TransactionDate) %>% 
-  summarise(Daily_Mean = mean(ActualSales),
-            Daily_Sum = sum(ActualSales)) %>% 
+# For the sake of trying the dashboard I'll reduce the columns, thus the size of our data frame
+
+transaction.df.s <- transaction.df[sample(length(transaction.df$TransactionDate),10000),c(1,4,5,7,8)]
+store.df <- store.df[,c(1,2)]
+promotion.df <- promotion.df[,c(1,2)]
+transaction.promotion.df <- transaction.promotion.df[sample(length(transaction.promotion.df$TransactionDate),10000),c(3,4)] 
+
+transaction.df.1 <- merge(transaction.df.s, store.df)
+transaction.df.2 <- merge(transaction.df.1, transaction.promotion.df) # This merge increments the rows length by a factor of 10^5....we need to find a solution
+transaction.df.m <- merge(transaction.df.2, promotion.df)
+
+sales_volumes <- transaction.df.m %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, StoreKey, PromoMechanic) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
 ```{r UI-Creation}
 
-Navbars <- fluidPage(theme = shinytheme("darkly"),
+ui <- fluidPage(
+  theme = shinytheme("darkly"),
   navbarPage( 
   title = "OW - Hackatow",
   tabPanel("Exploratory Analysis",
@@ -560,17 +568,35 @@ Navbars <- fluidPage(theme = shinytheme("darkly"),
                   value = c(min(sales_volumes$TransactionDate), 
                             max(sales_volumes$TransactionDate)),
                   timeFormat="%Y-%m-%d",
-                  timezone = "+0100")
+                  timezone = "+0100"),
+             
+             checkboxGroupInput(inputId = "Channel",
+                         label = "Channel", 
+                         selected = "Online",
+                         choices = unique(sales_volumes$DistributionChannel)),
+             
+             # pickerInput(inputId = "StoreKey",
+             #             label = "Store",
+             #             choices = levels(sales_volumes$StoreKey),
+             #             multiple = TRUE,
+             #             options = list(`actions-box` = TRUE)
+             #                  ),
+             
+             downloadButton(outputId = "report", 
+                            label = "Generate report")
              ),
            mainPanel(
-             plotOutput(outputId = "Sales_Volumes")          
+            tabsetPanel(
+              tabPanel(title = "Aggregate Sales Volumes",
+                       plotOutput(outputId = "SalesVolumes"),
+              tabPanel(title = "Volmes by PromoMechanic",
+                       plotOutput(outputId = "PromotionMechanism"))
              )
            )
+        )
+      )
     )
   )
-
-
-(ui <- dashboardPage(Navbars))
 
 ```
 
@@ -579,20 +605,56 @@ server <- function(input, output){
   
   datasetInput <- reactive({
       sales_volumes %>% 
-        filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2])
+      filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+      filter(DistributionChannel == input$Channel) %>% 
+    # filter(StoreKey == input$StoreKey) %>% 
+      group_by(TransactionDate) %>% 
+      summarise(Daily_Mean = mean(ActualSales),
+                Daily_Sum = sum(ActualSales))
     })
   
-  output$Sales_Volumes <- renderPlot({
+  output$SalesVolumes <- renderPlot({
+    if (length(row.names(datasetInput())) == 0) {print("Values are not available")}
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
-          geom_line()
+            geom_line(color = "deepskyblue4") + 
+            theme(panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA))
     )
+  })
+  
+  datasetInput2 <- reactive({
+      sales_volumes %>% 
+      filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+      filter(DistributionChannel == input$Channel) %>% 
+    # filter(StoreKey == input$StoreKey) %>% 
+      group_by(PromoMechanic) %>% 
+      summarise(Daily_Sum = sum(ActualSales))
     
+    })
+  
+  output$PromotionMechanism <- renderPlot({
+    if (length(row.names(datasetInput2())) == 0) {print("Values are not available")}
+    myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, y=Daily_Sum, fill=PromoMechanic)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    geom_errorbar(aes(ymin=Daily_Sum-sd, ymax=Daily_Sum+sd), width=.2,
+                 position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") +        
+      scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
+      theme(panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA))
   })
 }
-
 ```
 
-```{r Dasboard at Galnce}
-shinyApp(Navbars, server)
+```{r Dasboard at Glance}
+shinyApp(ui, server)
 ```
+
 
