@@ -431,6 +431,7 @@ Now we will split the data frame transaction into 2020, 2021, and 2022
 transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
 transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
+
 ```
 
 __________________________________________________________________________-
@@ -531,27 +532,20 @@ any(!is.na(mismatch$ProductKey)) # No match detected
 remove(noinfo_promo, mismatch)
 ```
 
-Why some promotions don't have the correspondent informations? What can we do about them?
+Why some promotions don't have the correspondent information? What can we do about them?
 
 _________________________________________________________
 # Interactive Dashboard
 ```{r Interactive Dashboard}
 # Trial 
-# For the sake of trying the dashboard I'll reduce the columns, thus the size of our data frame
+transaction.df.s <- merge(transaction.df, store.df)
+transaction.df.p <- merge(transaction.df.m, product.df)
+transaction.df.pr <- merge(transaction.df.m, transaction.promotion.df)
+transaction.df.pr <- transaction.df.pr[-c(4,5,11,12,13,14)]
+transaction.df <- merge(transaction.df.pr, promotion.df)
 
-transaction.df.s <- transaction.df[sample(length(transaction.df$TransactionDate),10000),c(1,4,5,7,8)]
-store.df <- store.df[,c(1,2)]
-promotion.df <- promotion.df[,c(1,2)]
-transaction.promotion.df <- transaction.promotion.df[sample(length(transaction.promotion.df$TransactionDate),10000),c(3,4)] 
-
-transaction.df.1 <- merge(transaction.df.s, store.df)
-transaction.df.2 <- merge(transaction.df.1, transaction.promotion.df) # This merge increments the rows length by a factor of 10^5....we need to find a solution
-
-transaction.df.m <- merge(transaction.df, store.df)
-transaction.df.m <- merge(transaction.df.m, product.df)
-
-sales_volumes <- transaction.df.m %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey) %>% 
+sales_volumes <- transaction.df.pr %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
@@ -648,6 +642,21 @@ server <- function(input, output){
                 Volumes = sum(UnitVolume))
     })
   
+ # output$PromotionMechanism <- renderPlot({
+  #  if (length(row.names(datasetInput2())) == 0) {print("Values are not available")}
+   # myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, y=Daily_Sum, fill=PromoMechanic)) +
+    #geom_bar(stat="identity", position=position_dodge()) +
+    #geom_errorbar(aes(ymin=Daily_Sum-sd, ymax=Daily_Sum+sd), width=.2,
+     #            position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") +        
+      #scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
+      #theme(panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+       #           axis.title.x = element_blank(),
+       #           axis.title.y = element_blank(),
+       #          panel.background = element_rect(fill=NA),
+       #           plot.background = element_rect(fill=NA))
+  #})
+  
   output$SalesVolumes <- renderPlot({
     if (length(row.names(datasetInput())) == 0) {print("Values are not available")}
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
@@ -711,29 +720,4 @@ server <- function(input, output){
 shinyApp(ui, server)
 ```
 
-```{r}
-# Da RI-guardare bene...
-    datasetInput2 <- reactive({
-      sales_volumes %>% 
-      filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-      filter(DistributionChannel %in%  input$Channel) %>% 
-    # filter(StoreKey == input$StoreKey) %>% 
-    # group_by(PromoMechanic) %>% 
-      summarise(Daily_Sum = sum(ActualSales))
-    
-    })
-    output$PromotionMechanism <- renderPlot({
-    if (length(row.names(datasetInput2())) == 0) {print("Values are not available")}
-    myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, y=Daily_Sum, fill=PromoMechanic)) +
-    geom_bar(stat="identity", position=position_dodge()) +
-    geom_errorbar(aes(ymin=Daily_Sum-sd, ymax=Daily_Sum+sd), width=.2,
-                 position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") +        
-      scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
-      theme(panel.grid.major = element_blank(),
-                  # axis.line = element_line(colour = "black"),
-                  axis.title.x = element_blank(),
-                  axis.title.y = element_blank(),
-                  panel.background = element_rect(fill=NA),
-                  plot.background = element_rect(fill=NA))
-  })
-```
+
