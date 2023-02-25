@@ -548,16 +548,17 @@ transaction.df.1 <- merge(transaction.df.s, store.df)
 transaction.df.2 <- merge(transaction.df.1, transaction.promotion.df) # This merge increments the rows length by a factor of 10^5....we need to find a solution
 
 transaction.df.m <- merge(transaction.df, store.df)
+transaction.df.m <- merge(transaction.df.m, product.df)
 
 sales_volumes <- transaction.df.m %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
 ```{r UI-Creation}
 
 ui <- fluidPage(
-  theme = shinytheme("darkly"),
+  theme = shinytheme("flatly"),
   navbarPage( 
   title = "OW - Hackatow",
   tabPanel("Exploratory Analysis",
@@ -577,18 +578,37 @@ ui <- fluidPage(
                          choices = c("Online", "Physical"),
                          selected = c("Online", "Physical")),
              
+             pickerInput(inputId = "StoreID",
+                         label = "StoreKey",
+                         choices = levels(sales_volumes$StoreKey),
+                         options = list('actions-box' = TRUE,
+                                        'liveSearch' = TRUE,
+                                        'showTick' = TRUE),
+                         multiple = TRUE,
+                         selected = "2071"
+                         ),
+             
+             checkboxGroupInput(inputId = "Category",
+                         label = "Category",
+                         choices = levels(sales_volumes$ProductCategory_Lvl2),
+                         selected = "AC", 
+                         inline = TRUE),
+             
              downloadButton(outputId = "report", 
                             label = "Generate report")
              ),
            mainPanel(
             tabsetPanel(type = "tabs",
               tabPanel(#splitLayout(cellWidths = c("60%", "20%", "20%")),
-                tags$p("Aggregate Sales Volumes"),
-                plotOutput(outputId = "SalesVolumes"),
-                tags$p("Summary Statistics"),
-                box(verbatimTextOutput(outputId = "Summary")),
-                tags$p("Values of Interest"),
-                box(verbatimTextOutput(outputId = "Totals"))),
+                                tags$p("Aggregate Sales Volumes"),
+                                plotOutput(outputId = "SalesVolumes"),
+                                # tags$p("Summary Statistics"),
+                                valueBoxOutput(outputId = "MeanDiscount"),
+                                valueBoxOutput(outputId = "MeanSale"),
+                                valueBoxOutput(outputId = "Volumes"),
+                                valueBoxOutput(outputId = "TotalDiscount"),
+                                valueBoxOutput(outputId = "TotalSales")
+                                ),
               
               tabPanel(title = "Volumes by PromoMechanic",
                        plotOutput(outputId = "PromotionMechanism"))
@@ -608,25 +628,28 @@ server <- function(input, output){
       sales_volumes %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
+      filter(StoreKey %in% input$StoreID) %>% 
+      filter(ProductCategory_Lvl2 %in% input$Category) %>% 
       group_by(TransactionDate) %>% 
       summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
-                Daily_Discount = -sum(SalesDiscount))
+                Daily_Discount = -sum(SalesDiscount),
+                Volumes = sum(UnitVolume))
     })
   
   output$SalesVolumes <- renderPlot({
     if (length(row.names(datasetInput())) == 0) {print("Values are not available")}
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
             geom_line(color = "deepskyblue4") + 
-            #geom_line(aes(x = TransactionDate, 
-             #             y = Daily_Discount*(mean(Daily_Sum)/mean(Daily_Discount))),
-              #        color = "yellow4") +
-            #scale_y_continuous(
+            geom_line(aes(x = TransactionDate, 
+                          y = Daily_Discount*(max(Daily_Sum)/max(Daily_Discount))),
+                      color = "yellow4") +
+            scale_y_continuous(
             # Features of the first axis
-            #name = "AggregateSales",
+            name = "AggregateSales",
             # Add a second axis and specify its features
-            #sec.axis = sec_axis(~.*mean(Daily_Sum)/mean(Daily_Discount), 
-            #name="AggregateDiscount")) +
+            sec.axis = sec_axis(~.*max(datasetInput()$Daily_Sum)/max(datasetInput()$Daily_Discount), 
+            name="AggregateDiscount")) +
             theme(# panel.grid.major = element_blank(),
                   # axis.line = element_line(colour = "black"),
                   axis.title.x = element_blank(),
@@ -635,17 +658,40 @@ server <- function(input, output){
                   plot.background = element_rect(fill=NA)))
   })
   
-  output$Summary <- renderPrint({
-    summary(datasetInput()[,2:3])
+  output$MeanDiscount <- renderValueBox({
+    valueBox(subtitle = mean(datasetInput()$Daily_Discount),
+             value = "MeanDailyDiscount (€)")
   
+  })
+  
+  output$MeanSale <- renderValueBox({
+    valueBox(subtitle = mean(datasetInput()$Daily_Sum),
+             value = "MeanDailySales (€)")
+  
+  })
+  
+   output$Volumes <- renderValueBox({
+     valueBox(subtitle = sum(datasetInput()$Volumes),
+       value = "Volumes (Unit)",
+      # width = 6,
+       color = "navy")
+     
     })
   
-   output$Totals <- renderPrint({
-     df <- cbind(sum(datasetInput()$Daily_Sum),
-                sum(datasetInput()$Daily_Discount))
-     colnames(df) <- c("Aggregate Volumes", "Aggregate Discount")
-     print(df)
-   })
+   output$TotalDiscount <- renderValueBox({
+     valueBox(subtitle = sum(datasetInput()$Daily_Discount),
+              value = "TotalDiscount (€)",
+              # width = 6, 
+              color = "olive")
+  })
+   
+   output$TotalSales<- renderValueBox({
+     valueBox(subtitle = sum(datasetInput()$Daily_Sum),
+       value = "TotalSales (€)",
+       # width = 6,
+       color = "green")
+  })
+   
 }
 
 ```
@@ -681,3 +727,16 @@ shinyApp(ui, server)
   })
 ```
 
+
+```{r}
+sales_volumes %>% 
+      #filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+      #filter(DistributionChannel %in% input$Channel) %>% 
+      #filter(StoreKey %in% input$StoreID) %>% 
+      filter(ProductCategory_Lvl2 %in% "AC") %>% 
+      group_by(TransactionDate) %>% 
+      summarise(Daily_Mean = mean(ActualSales),
+                Daily_Sum = sum(ActualSales),
+                Daily_Discount = -sum(SalesDiscount),
+                Volumes = sum(UnitVolume))
+```
