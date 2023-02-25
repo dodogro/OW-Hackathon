@@ -551,7 +551,7 @@ transaction.df.m <- merge(transaction.df, store.df)
 transaction.df.m <- merge(transaction.df.m, product.df)
 
 sales_volumes <- transaction.df.m %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
@@ -594,9 +594,19 @@ ui <- fluidPage(
                          selected = "AC", 
                          inline = TRUE),
              
+             pickerInput(inputId = "ProductID",
+                         label = "ProductKey",
+                         choices = levels(sales_volumes$ProductKey),
+                         options = list('actions-box' = TRUE,
+                                        'liveSearch' = TRUE,
+                                        'showTick' = TRUE),
+                         multiple = TRUE,
+                         selected = c("49340", "49341", "49333","49329")),
+             
              downloadButton(outputId = "report", 
                             label = "Generate report")
              ),
+           
            mainPanel(
             tabsetPanel(type = "tabs",
               tabPanel(#splitLayout(cellWidths = c("60%", "20%", "20%")),
@@ -629,7 +639,8 @@ server <- function(input, output){
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
       filter(StoreKey %in% input$StoreID) %>% 
-      filter(ProductCategory_Lvl2 %in% input$Category) %>% 
+      filter(ProductCategory_Lvl2 %in% input$Category) %>%
+      filter(ProductKey %in% input$ProductID) %>% 
       group_by(TransactionDate) %>% 
       summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
@@ -725,18 +736,4 @@ shinyApp(ui, server)
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA))
   })
-```
-
-
-```{r}
-sales_volumes %>% 
-      #filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-      #filter(DistributionChannel %in% input$Channel) %>% 
-      #filter(StoreKey %in% input$StoreID) %>% 
-      filter(ProductCategory_Lvl2 %in% "AC") %>% 
-      group_by(TransactionDate) %>% 
-      summarise(Daily_Mean = mean(ActualSales),
-                Daily_Sum = sum(ActualSales),
-                Daily_Discount = -sum(SalesDiscount),
-                Volumes = sum(UnitVolume))
 ```
