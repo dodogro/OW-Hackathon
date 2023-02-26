@@ -544,7 +544,7 @@ transaction.df.pr <- merge(transaction.df.m, transaction.promotion.df)
 transaction.df.pr <- transaction.df.pr[-c(4,5,11,12,13,14)]
 transaction.df <- merge(transaction.df.pr, promotion.df)
 
-sales_volumes <- transaction.df.pr %>% 
+sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
@@ -567,6 +567,15 @@ ui <- fluidPage(
                   timeFormat="%Y-%m-%d",
                   timezone = "+0100"),
              
+              pickerInput(inputId = "ProductID",
+                         label = "ProductKey",
+                         choices = levels(sales_volumes$ProductKey),
+                         options = list('actions-box' = TRUE,
+                                        'liveSearch' = TRUE,
+                                        'showTick' = TRUE),
+                         multiple = TRUE,
+                         selected = c("49340", "49341", "49333","49329")),
+             
              checkboxGroupInput(inputId = "Channel",
                          label = "Channel",
                          choices = c("Online", "Physical"),
@@ -588,14 +597,14 @@ ui <- fluidPage(
                          selected = "AC", 
                          inline = TRUE),
              
-             pickerInput(inputId = "ProductID",
-                         label = "ProductKey",
-                         choices = levels(sales_volumes$ProductKey),
+             pickerInput(inputId = "Promo",
+                         label = "PromoMechanic",
+                         choices = levels(sales_volumes$PromoMechanic),
                          options = list('actions-box' = TRUE,
                                         'liveSearch' = TRUE,
                                         'showTick' = TRUE),
                          multiple = TRUE,
-                         selected = c("49340", "49341", "49333","49329")),
+                         selected = "Percentage off"),
              
              downloadButton(outputId = "report", 
                             label = "Generate report")
@@ -609,13 +618,14 @@ ui <- fluidPage(
                                 # tags$p("Summary Statistics"),
                                 valueBoxOutput(outputId = "MeanDiscount"),
                                 valueBoxOutput(outputId = "MeanSale"),
-                                valueBoxOutput(outputId = "Volumes"),
+                                valueBoxOutput(outputId = "TotalSales"),
                                 valueBoxOutput(outputId = "TotalDiscount"),
-                                valueBoxOutput(outputId = "TotalSales")
+                                valueBoxOutput(outputId = "Volumes")
                                 ),
               
-              tabPanel(title = "Volumes by PromoMechanic",
-                       plotOutput(outputId = "PromotionMechanism"))
+              tabPanel(tags$p("Volumes by PromoMechanic"),
+                       plotOutput(outputId = "PromotionMechanism")
+                       )
              )
            )
         )
@@ -642,23 +652,38 @@ server <- function(input, output){
                 Volumes = sum(UnitVolume))
     })
   
- # output$PromotionMechanism <- renderPlot({
-  #  if (length(row.names(datasetInput2())) == 0) {print("Values are not available")}
-   # myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, y=Daily_Sum, fill=PromoMechanic)) +
-    #geom_bar(stat="identity", position=position_dodge()) +
-    #geom_errorbar(aes(ymin=Daily_Sum-sd, ymax=Daily_Sum+sd), width=.2,
-     #            position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") +        
-      #scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
-      #theme(panel.grid.major = element_blank(),
-                  # axis.line = element_line(colour = "black"),
-       #           axis.title.x = element_blank(),
-       #           axis.title.y = element_blank(),
-       #          panel.background = element_rect(fill=NA),
-       #           plot.background = element_rect(fill=NA))
-  #})
+  datasetInput2 <- reactive({
+      sales_volumes %>% 
+      filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+      filter(DistributionChannel %in% input$Channel) %>% 
+      filter(StoreKey %in% input$StoreID) %>% 
+      filter(ProductCategory_Lvl2 %in% input$Category) %>%
+      filter(ProductKey %in% input$ProductID) %>% 
+      group_by(TransactionDate, PromoMechanic, DistributionChannel) %>% 
+      summarise(Daily_Mean = mean(ActualSales),
+                Daily_Sum = sum(ActualSales),
+                Daily_Discount = -sum(SalesDiscount),
+                Volumes = sum(UnitVolume))
+  })
+    
+  output$PromotionMechanism <- renderPlot({
+    print(myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, 
+                                                 y=Daily_Sum, fill=PromoMechanic)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+   # geom_errorbar(aes(ymin=Daily_Sum, ymax=Daily_Sum), width=.2,
+    #              position=position_dodge(.9)) + 
+      scale_fill_brewer(palette="Paired") +        
+      scale_x_discrete(guide = guide_axis(check.overlap = TRUE)) + 
+      theme(panel.grid.major = element_blank(),
+          # axis.line = element_line(colour = "black"),
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            panel.background = element_rect(fill= NA),
+            plot.background = element_rect(fill= NA)
+         ))
+  })
   
   output$SalesVolumes <- renderPlot({
-    if (length(row.names(datasetInput())) == 0) {print("Values are not available")}
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
             geom_line(color = "deepskyblue4") + 
             geom_line(aes(x = TransactionDate, 
@@ -680,36 +705,33 @@ server <- function(input, output){
   
   output$MeanDiscount <- renderValueBox({
     valueBox(subtitle = mean(datasetInput()$Daily_Discount),
-             value = "MeanDailyDiscount (€)")
-  
+             value = "MeanDailyDiscount (MYR)")
   })
   
   output$MeanSale <- renderValueBox({
     valueBox(subtitle = mean(datasetInput()$Daily_Sum),
-             value = "MeanDailySales (€)")
-  
+             value = "MeanDailySales (MYR)")
   })
   
-   output$Volumes <- renderValueBox({
+  output$Volumes <- renderValueBox({
      valueBox(subtitle = sum(datasetInput()$Volumes),
-       value = "Volumes (Unit)",
-      # width = 6,
-       color = "navy")
-     
-    })
+              value = "Volumes (Unit)",
+              width = 4,
+              color = "navy")
+  })
   
    output$TotalDiscount <- renderValueBox({
      valueBox(subtitle = sum(datasetInput()$Daily_Discount),
-              value = "TotalDiscount (€)",
-              # width = 6, 
+              value = "TotDiscount (MYR)",
+              width = 4, 
               color = "olive")
   })
    
    output$TotalSales<- renderValueBox({
      valueBox(subtitle = sum(datasetInput()$Daily_Sum),
-       value = "TotalSales (€)",
-       # width = 6,
-       color = "green")
+              value = "TotSales (MYR)",
+              width = 4,
+              color = "green")
   })
    
 }
@@ -717,7 +739,11 @@ server <- function(input, output){
 ```
 
 ```{r Dasboard at Glance}
+
 shinyApp(ui, server)
+
 ```
+
+
 
 
