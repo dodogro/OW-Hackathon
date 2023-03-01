@@ -629,7 +629,10 @@ ui <- fluidPage(
               
               tabPanel(tags$p("Volumes by Stores"),
                        ggiraphOutput(outputId = "Store")
-                       )
+                       ),
+              
+              tabPanel(tags$p("Products' Growth"),
+                       plotOutput(outputId = "CategoryGrowth"))
              )
            )
         )
@@ -682,7 +685,17 @@ server <- function(input, output){
                         "Region lvl.2: ", Region_Lvl2)) %>% 
     arrange(desc(revenues)) %>% 
     ungroup()
-    
+  })
+  
+  transactions.sag <- reactive({
+    sales_volumes %>% 
+    filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+    filter(DistributionChannel %in% input$Channel) %>% 
+    filter(StoreKey %in% input$StoreID) %>% 
+    filter(ProductCategory_Lvl2 %in% input$Category) %>%
+    group_by(ProductCategory_Lvl2) %>%  
+    arrange(TransactionDate) %>% 
+    mutate(cum_rev = cumsum(ActualSales))
   })
   
   # BarPlot
@@ -754,7 +767,6 @@ server <- function(input, output){
               color = "green")
   })
 
-   
   output$Store <- renderggiraph({
     packing <- circleProgressiveLayout(store.summary()$revenues, sizetype = "area")
     data <- cbind(store.summary(), packing)
@@ -778,6 +790,21 @@ server <- function(input, output){
   widg
   })
 
+  output$CategoryGrowth <- renderPlot({
+    ggplot(transactions.sag(), aes(x = TransactionDate, y = cum_rev,
+                                    fill = ProductCategory_Lvl2)) + 
+      labs(fill = "Product Category\nLvl. 2", 
+           x = "Transaction Date",y = "Cumulative revenues" ) +
+      geom_area(color = "black", linewidth = 0.2, alpha = 0.6) +
+       theme(# panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA))
+      
+  })
+    
 }
 
 ```
@@ -787,4 +814,3 @@ server <- function(input, output){
 shinyApp(ui, server)
 
 ```
-```{r}
