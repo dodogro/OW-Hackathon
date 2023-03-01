@@ -1,0 +1,231 @@
+---
+title: "EDA"
+output: html_notebook
+---
+
+```{r}
+pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
+               lattice, gcookbook)
+```
+
+
+```{r}
+load(file = "transactions2020.RData")
+load(file = "transactions2021.RData")
+load(file = "transactions2022.RData")
+```
+
+```{r}
+df <- rbind(transactions2020, transactions2021, transactions2022)
+```
+
+
+# Checking summaries
+```{r}
+summary(transactions2020)
+summary(transactions2021)
+summary(transactions2022)
+```
+
+
+
+# Exploring variables
+
+## Days of the week
+
+```{r}
+table(transactions2020$DayOfWeek)
+```
+
+Drop unused levels
+```{r}
+transactions2020$DayOfWeek <- droplevels(transactions2020$DayOfWeek)
+```
+
+Reordering levels
+```{r}
+transactions2020$DayOfWeek <- factor(transactions2020$DayOfWeek,
+                                     levels=c('Monday', 'Tuesday', 'Wednesday',
+                                              'Thursday', 'Friday', 'Saturday',
+                                              'Sunday'))
+
+table(transactions2020$DayOfWeek)
+```
+
+```{r}
+table(transactions2021$DayOfWeek)
+transactions2021$DayOfWeek <- droplevels(transactions2021$DayOfWeek)
+transactions2021$DayOfWeek <- factor(transactions2021$DayOfWeek,
+                                     levels=c('Monday', 'Tuesday', 'Wednesday',
+                                              'Thursday', 'Friday', 'Saturday',
+                                              'Sunday'))
+
+table(transactions2021$DayOfWeek)
+```
+
+```{r Reordering levels DayOfWeek}
+table(transactions2022$DayOfWeek)
+transactions2022$DayOfWeek <- droplevels(transactions2022$DayOfWeek)
+transactions2022$DayOfWeek <- factor(transactions2022$DayOfWeek,
+                                     levels=c('Monday', 'Tuesday', 'Wednesday',
+                                              'Thursday', 'Friday', 'Saturday',
+                                              'Sunday'))
+
+table(transactions2022$DayOfWeek)
+
+# OK
+```
+
+
+## Weekend Flag
+```{r WeekendFlag}
+table(transactions2020$WeekendFlag) # Unused levels
+transactions2020$WeekendFlag <- droplevels(transactions2020$WeekendFlag)
+transactions2021$WeekendFlag <- droplevels(transactions2021$WeekendFlag)
+transactions2022$WeekendFlag <- droplevels(transactions2022$WeekendFlag)
+
+table(transactions2020$WeekendFlag)
+table(transactions2021$WeekendFlag)
+table(transactions2022$WeekendFlag)
+```
+
+# Stores overview
+```{r Preparing dataset}
+# Select the year
+yr <- "2020"
+
+store.summary <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate) %>% 
+  filter(year(TransactionDate) == yr) %>% 
+  group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
+  summarise(revenues = sum(ActualSales)) %>% 
+  mutate(txt = paste("Store: ",StoreKey, "\n",
+                     "Yearly sales: ", round(revenues/1000, digits = 0),"k€", "\n",
+                     "Region lvl.1: ", Region_Lvl1, "\n",
+                     "Region lvl.2: ", Region_Lvl2)) %>% 
+  arrange(desc(revenues)) %>% 
+  ungroup()
+
+# Preparing variables
+store.summary$StoreKey <- as.character(store.summary$StoreKey)
+```
+
+```{r Packed Bubble Chart}
+# Generating Layout
+packing <- circleProgressiveLayout(store.summary$revenues, sizetype = "area")
+data <- cbind(store.summary, packing)
+data.gg <- circleLayoutVertices(packing, npoints = 50)
+
+# Plot
+p <- ggplot() +
+  geom_polygon_interactive(data = data.gg,
+                           aes(x = x, y = y, group = id, fill = id,
+                               tooltip = data$txt[id], data_id = id),
+                           colour = "black", alpha = 0.6) +
+  scale_fill_viridis() +
+  geom_text(data = data,
+            aes(x = x, y = y, label = StoreKey),
+            size = 2, colour = "black") +
+  theme_void() + 
+  theme(legend.position = "none") +
+  coord_equal()
+
+# Interactive
+widg <- ggiraph(ggobj = p, width_svg = 7, height_svg = 7)
+widg
+```
+
+How many stores opened or closed from 2020?
+```{r Stores opened/closed}
+stores.2020 <- unique(transactions2020$StoreKey)
+stores.2022 <- unique(transactions2022$StoreKey)
+
+# Stores closed
+stores.2020[!(stores.2020 %in% stores.2022)]
+print(paste(length(stores.2020[!(stores.2020 %in% stores.2022)]), "stores closed from 2020",
+            sep = " "))
+# Stores opened
+stores.2022[!(stores.2022 %in% stores.2020)]
+print(paste(length(stores.2022[!(stores.2022 %in% stores.2020)]), "stores opened from 2020"))
+
+remove(stores.2020, stores.2022)
+```
+
+# ProductCategory
+```{r Exploring tables}
+table(transactions2020$ProductCategory_Lvl2)
+table(transactions2022$ProductCategory_Lvl2)
+```
+
+# Product Category
+
+```{r Preparing data}
+# Select product category
+prod.cat <- c("AA", "AB", "AC", "AD", "AE")
+
+transactions.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  select(TransactionDate, ActualSales, ProductCategory_Lvl2) %>% 
+  filter(ProductCategory_Lvl2 %in% prod.cat) %>% 
+  group_by(ProductCategory_Lvl2) %>% 
+  arrange(TransactionDate) %>% 
+  mutate(cum_rev = cumsum(ActualSales))
+
+```
+
+```{r Preparing the dataset}
+ggplot(data = transactions.sag, aes(x = TransactionDate, y = cum_rev,
+                                    fill = ProductCategory_Lvl2)) +
+  labs(fill = "Product Category\nLvl. 2", 
+       x = "Transaction Date",y = "Cumulative revenues" ) +
+  geom_area(color = "black", linewidth = 0.2, alpha = 0.6)
+```
+
+AD products are irrelevant when compared to other categories, AE shows a really slow growth, while AA, AB, AC are the best categories in terms of volumes and growth.
+
+# Distribution channels
+
+```{r Preparing the dataset}
+# Select distribution channel
+dist.channel <- c("Physical", "Online")
+
+dist.channel.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel) %>% 
+  filter(DistributionChannel %in% dist.channel) %>% 
+  group_by(DistributionChannel) %>% 
+  arrange(TransactionDate) %>% 
+  mutate(cum_rev = cumsum(ActualSales))
+
+```
+
+```{r Preparing the dataset}
+ggplot(data = dist.channel.sag, aes(x = TransactionDate, y = cum_rev,
+                                    fill = DistributionChannel)) +
+  labs(fill = "Product Category\nLvl. 2", 
+       x = "Transaction Date",y = "Cumulative revenues" ) +
+  geom_area(color = "black", linewidth = 0.2, alpha = 0.6)
+```
+
+Online distribution channel is a very narrow revenues source with low growth
+
+
+# Regional distribution
+
+```{r Preparing the dataset}
+# Select regions to exclude
+regions.exclude.Lvl1 <- c("") # Lvl 1 regions to exclude
+regions.exclude.Lvl2 <- c("") # Lvl 2 regions to exclude
+
+reg.distribution.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  select(TransactionDate, ActualSales, Region_Lvl2, Region_Lvl1) %>% 
+  filter(!(Region_Lvl1 %in% regions.exclude.Lvl1) | 
+           !(Region_Lvl2 %in% regions.exclude.Lvl2)) %>% 
+  group_by(Region_Lvl2, Region_Lvl1) %>% 
+  arrange(TransactionDate) %>% 
+  mutate(cum_rev = cumsum(ActualSales))
+```
+
+
+
+
+
+

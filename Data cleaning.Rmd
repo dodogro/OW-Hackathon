@@ -541,11 +541,11 @@ _________________________________________________________
 transaction.df.s <- merge(transaction.df, store.df)
 transaction.df.p <- merge(transaction.df.m, product.df)
 transaction.df.pr <- merge(transaction.df.m, transaction.promotion.df)
-transaction.df.pr <- transaction.df.pr[-c(4,5,11,12,13,14)]
+transaction.df.pr <- transaction.df.pr[-c(4,5,14)]
 transaction.df <- merge(transaction.df.pr, promotion.df)
 
 sales_volumes <- transaction.df %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 ```
 
@@ -616,8 +616,8 @@ ui <- fluidPage(
                                 tags$p("Aggregate Sales Volumes"),
                                 plotOutput(outputId = "SalesVolumes"),
                                 # tags$p("Summary Statistics"),
-                                valueBoxOutput(outputId = "MeanDiscount"),
-                                valueBoxOutput(outputId = "MeanSale"),
+                                #valueBoxOutput(outputId = "MeanDiscount"),
+                                #valueBoxOutput(outputId = "MeanSale"),
                                 valueBoxOutput(outputId = "TotalSales"),
                                 valueBoxOutput(outputId = "TotalDiscount"),
                                 valueBoxOutput(outputId = "Volumes")
@@ -625,6 +625,10 @@ ui <- fluidPage(
               
               tabPanel(tags$p("Volumes by PromoMechanic"),
                        plotOutput(outputId = "PromotionMechanism")
+                       ),
+              
+              tabPanel(tags$p("Volumes by Stores"),
+                       ggiraphOutput(outputId = "Store")
                        )
              )
            )
@@ -665,7 +669,23 @@ server <- function(input, output){
                 Daily_Discount = -sum(SalesDiscount),
                 Volumes = sum(UnitVolume))
   })
+  
+  store.summary <- reactive({
+    sales_volumes %>% 
+    select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate) %>% 
+    filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+    group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
+    summarise(revenues = sum(ActualSales)) %>% 
+    mutate(txt = paste("Store: ",StoreKey, "\n",
+                        "Yearly sales: ", round(revenues/1000, digits = 0),"k€", "\n",
+                        "Region lvl.1: ", Region_Lvl1, "\n",
+                        "Region lvl.2: ", Region_Lvl2)) %>% 
+    arrange(desc(revenues)) %>% 
+    ungroup()
     
+  })
+  
+  # BarPlot
   output$PromotionMechanism <- renderPlot({
     print(myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, 
                                                  y=Daily_Sum, fill=PromoMechanic)) +
@@ -679,10 +699,10 @@ server <- function(input, output){
             axis.title.x = element_blank(),
             axis.title.y = element_blank(),
             panel.background = element_rect(fill= NA),
-            plot.background = element_rect(fill= NA)
-         ))
+            plot.background = element_rect(fill= NA)))
   })
   
+  # Time Series
   output$SalesVolumes <- renderPlot({
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
             geom_line(color = "deepskyblue4") + 
@@ -703,15 +723,15 @@ server <- function(input, output){
                   plot.background = element_rect(fill=NA)))
   })
   
-  output$MeanDiscount <- renderValueBox({
-    valueBox(subtitle = mean(datasetInput()$Daily_Discount),
-             value = "MeanDailyDiscount (MYR)")
-  })
+  #output$MeanDiscount <- renderValueBox({
+   # valueBox(subtitle = mean(datasetInput()$Daily_Discount),
+    #         value = "MeanDailyDiscount (MYR)")
+ # })
   
-  output$MeanSale <- renderValueBox({
-    valueBox(subtitle = mean(datasetInput()$Daily_Sum),
-             value = "MeanDailySales (MYR)")
-  })
+  #output$MeanSale <- renderValueBox({
+   # valueBox(subtitle = mean(datasetInput()$Daily_Sum),
+    #         value = "MeanDailySales (MYR)")
+  #})
   
   output$Volumes <- renderValueBox({
      valueBox(subtitle = sum(datasetInput()$Volumes),
@@ -733,7 +753,31 @@ server <- function(input, output){
               width = 4,
               color = "green")
   })
+
    
+  output$Store <- renderggiraph({
+    packing <- circleProgressiveLayout(store.summary()$revenues, sizetype = "area")
+    data <- cbind(store.summary(), packing)
+    data.gg <- circleLayoutVertices(packing, npoints = 50)
+
+    p <- ggplot() +
+    geom_polygon_interactive(data = data.gg,
+                             aes(x = x, y = y, group = id, fill = id,
+                                 tooltip = data$txt[id], data_id = id),
+                             colour = "black", alpha = 0.6) +
+    scale_fill_viridis() +
+    geom_text(data = data,
+              aes(x = x, y = y, label = StoreKey),
+              size = 2, colour = "black") +
+    theme_void() + 
+    theme(legend.position = "none") +
+    coord_equal()
+  
+  # Interactive
+  widg <- ggiraph(ggobj = p, width_svg = 7, height_svg = 7)
+  widg
+  })
+
 }
 
 ```
@@ -743,7 +787,4 @@ server <- function(input, output){
 shinyApp(ui, server)
 
 ```
-
-
-
-
+```{r}
