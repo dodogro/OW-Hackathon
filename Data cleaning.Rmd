@@ -680,7 +680,7 @@ server <- function(input, output){
     group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
     summarise(revenues = sum(ActualSales)) %>% 
     mutate(txt = paste("Store: ",StoreKey, "\n",
-                        "Yearly sales: ", round(revenues/1000, digits = 0),"k€", "\n",
+                        "Yearly sales: ", round(revenues/1000, digits = 0),"kMYR", "\n",
                         "Region lvl.1: ", Region_Lvl1, "\n",
                         "Region lvl.2: ", Region_Lvl2)) %>% 
     arrange(desc(revenues)) %>% 
