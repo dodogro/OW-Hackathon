@@ -13,7 +13,7 @@ Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
                shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
-               vtable)
+               vtable, ggcharts)
 
 # Removing scientific notation
 
@@ -43,7 +43,7 @@ Cleaning Product Sub-Category column. Indeed, lv2. has some categories that need
 Note on RegEx used: - (\\w*) = takes every word up to infinite times
                     - (\\s)  = considers the first space present in the string
                     - Combination of the two = Take all the words before a space (included)
-```{r Cleaing Product Category}
+```{r Cleaning Product Category}
 product.df$ProductCategory_Lvl1 <- toupper(gsub("(\\w*\\s)", "", 
                                         product.df$ProductCategory_Lvl1))
 
@@ -77,6 +77,10 @@ length(unique(product.df$SupplierKey))
 ```
 There are 17 Product suppliers
 
+```{r}
+length(unique(product.df$BrandKey))
+```
+There are 24 Brands
 ________________________________________________________________________________
 # CPI dataset
 
@@ -144,6 +148,18 @@ str(cpi.df)
 IMPORTANT NOTE:
 There is a slight difference in monthly CPI computed as the mean of daily values and the one provided by the data due to the reason stated above. 
 
+```{r Checking for duplicates}
+any(duplicated(cpi.df))
+```
+No duplicates in the dataset
+
+## Plotting average monthly CPI
+```{r}
+plot(unique(cpi.df$CPI_monthly),
+     type = "l", xlab = "Month", ylab = "Average monthly CPI")
+```
+
+
 ___________________________________________________
 # Promotion dataset
 
@@ -184,12 +200,41 @@ summary(promotion.df)
 ```
 No missing values
 
+```{r}
+promotion.df <- promotion.df %>% 
+  mutate(duration = round(difftime(PromotionEndDate,
+                                   PromotionStartDate,
+                                   units = "days"),
+                          digits = 0))
+
+```
+
+```{r}
+promo.avg.duration <- promotion.df %>% 
+  group_by(PromoMechanic) %>% 
+  summarise(avg.duration = mean(duration))
+
+plot(promo.avg.duration, type = "b")
+```
+
+```{r Unknown promotions}
+unknown.promotions <- promotion.df[promotion.df$PromoMechanic == "Unknown",]
+view(unknown.promotions)
+```
+
+Some unknown promotions are set without ending date, as a default is equal to 2049-12-31
+
+```{r Duplicates in promotion}
+any(duplicated(promotion.df))
+```
+No duplicates
+
 OK
 
 ____________________________________________-
 # Store Dataset
 
-```{r Laoding Store.df}
+```{r Loading Store.df}
 head(store.df <- read.table(paste0(path, 
                                    "Hackathon_DimStore_SAN_vShared.csv"), 
                            header = TRUE,
@@ -200,17 +245,10 @@ head(store.df <- read.table(paste0(path,
 str(store.df)
 ```
 
-Transforming StoreKey and DistributionChannel into factors
-```{r Factorization}
-store.df$StoreKey <- as.factor(store.df$StoreKey)
-store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
-```
-
-
 Adjusting StoreType and transforming it into factor
 Note on RegEx: (\S+\s\S+) serves two take the first two words in the string, where \\S+ is the negation of \s, thus taking all the words excluding the space and \\s considers exactly the spaces. The combination takes thus exactly the first two words before a second space 
 
-```{r Cleaning miswritten data entries}
+```{r Cleaning miswritten StoreType}
 store.df$StoreType <- gsub("(\\S+\\s\\S+)", "", store.df$StoreType)
 store.df$StoreType <- as.factor(store.df$StoreType)
 ```
@@ -218,7 +256,7 @@ store.df$StoreType <- as.factor(store.df$StoreType)
 Adjusting Region_lvl 1 and 2 and transforming into factors
 Note on RegEx: - [A-Z](?!.*[A-Z].* takes just the last capital letter
                - \\d+ is takes just the first group of number
-```{r Cleaning miswritten data entries}
+```{r Cleaning miswritten Region_Lvl}
 store.df$Region_Lvl1 <- str_extract(store.df$Region_Lvl1, "[A-Z](?!.*[A-Z].*)")
 store.df$Region_Lvl2 <- str_extract(store.df$Region_Lvl2, "\\d+")
 
@@ -230,14 +268,26 @@ Final check
 ```{r Exploration}
 table(store.df$Region_Lvl1)
 as.data.frame(table(store.df$Region_Lvl2))
+```
 
+```{r Check store key duplicates}
+# Check for duplicates
+any(duplicated(store.df))
+store.df <- distinct(store.df)
+```
+
+
+Transforming StoreKey and DistributionChannel into factors
+```{r Factorization of StoreKey and DistributionChannel}
+store.df$StoreKey <- as.factor(store.df$StoreKey)
+store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
 ```
 
 OK
 _____________________________________
 # Trasaction Dataset
 
-```{r Laoding Transaction.df}
+```{r Loading Transaction.df}
 head(transaction.df <- read.table(paste0(path,
                        "Hackathon_FactSalesTransactionDATES_vShared.csv"),
                                   header = TRUE,
@@ -248,28 +298,64 @@ head(transaction.df <- read.table(paste0(path,
 str(transaction.df)
 ```
 During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding
-```{r StoreKey adjustment}
+```{r StoreKey and ProductKey adjustment}
 transaction.df$StoreKey <-  gsub("_Key", "", transaction.df$StoreKey)
+transaction.df$StoreKey <- gsub("Key", "", transaction.df$StoreKey)
+transaction.df$StoreKey <- gsub("key ", "", transaction.df$StoreKey)
+transaction.df$StoreKey <- gsub(" key ", "", transaction.df$StoreKey)
+transaction.df$StoreKey <- gsub("  key ", "", transaction.df$StoreKey)
+transaction.df$ProductKey <- gsub("Key", "", transaction.df$ProductKey)
+transaction.df$ProductKey <- gsub("key ", "", transaction.df$ProductKey)
+transaction.df$ProductKey <- gsub(" key ", "", transaction.df$ProductKey)
+transaction.df$ProductKey <- gsub("  key ", "", transaction.df$ProductKey)
 ```
 
-```{r ProductKey adjustment}
-transaction.df$ProductKey <- gsub("Key", "", transaction.df$ProductKey)
+```{r Check for duplicates}
+# any(duplicated(transaction.df)) too long to compute (TRUE)
+```
+
+
+```{r Checking if there is a match between keys}
+length(unique(store.df$StoreKey))
+length(unique(transaction.df$StoreKey))
+
+length(unique(product.df$ProductKey))
+length(unique(transaction.df$ProductKey))
+```
+
+Not all StoreKey in the transactions dataset are present (724 against 299).
+There is one ProductKey without a match (299 against 298)
+
+```{r Check ProductKey}
+missing.productkey <- transaction.df[!(transaction.df$ProductKey
+                                       %in% product.df$ProductKey),]
+```
+
+There are 23978 registered transactions without information that needs to be removed
+
+```{r Removing missing values}
+transaction.df <- transaction.df[transaction.df$ProductKey != "",]
+remove(missing.productkey)
 ```
 
 
 Trasforming TransactionDate into POSIXct format (it takes a while)
 ```{r Dates as.Date}
-head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,format = "%Y-%m-%d",
+head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
+                                                  format = "%Y-%m-%d",
                                                   tz = time_at_tz(
-                                                Sys.timezone(location = TRUE))
-                                                )
+                                                    Sys.timezone(location = TRUE))
+                                                  )
      )
 
 ```
 
 Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
 ```{r Factorization}
-transaction.df$DayOfWeek <- as.factor(transaction.df$DayOfWeek)
+transaction.df$DayOfWeek <- factor(transaction.df$DayOfWeek,
+                                   levels=c('Monday', 'Tuesday', 'Wednesday',
+                                            'Thursday', 'Friday', 'Saturday',
+                                            'Sunday'))
 transaction.df$WeekendFlag <- as.factor(transaction.df$WeekendFlag)
 transaction.df$StoreKey <- as.factor(transaction.df$StoreKey)
 transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
@@ -278,48 +364,20 @@ transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
 ```{r Overview}
 summary(transaction.df)
 ```
+```{r 2012 transactions}
+unique(year(transaction.df$TransactionDate))
 
-# 23978 missing values
-Check what 23978 missing values are treated as characters
-```{r Testing}
-test1 <- transaction.df$TransactionDate
-test2 <- transaction.df$TransactionDate
+transactions.2012 <- transaction.df %>% 
+  filter(year(TransactionDate) == 2012)
 
-test1 <- as.POSIXct(test1,
-                    format = "%Y-%m-%d",
-                    tz = "")
-
-verifica <- test2[which(is.na(test1))]
-
-head(verifica)
-```
-
-Testing if the same problem is replicated also for other character variables different from date
-```{r Looking for the NAs}
-names(transaction.df)
-length(which(transaction.df$DayOfWeek == ""))
-length(which(transaction.df$WeekendFlag == ""))
-```
-
-A recurrent pattern of "" for 23978 observation is present
--> Deleting those observations from the dataset
-
-```{r Removing "" values}
+# Removing 2012 transactions, possible mistakes but not addressable to 2021
 transaction.df <- transaction.df %>% 
-  filter(as.character(TransactionDate) != "")
+  filter(year(TransactionDate) != 2012)
 ```
 
 
-
-Checking again the summary
-```{r Overview}
-summary(transaction.df)
-```
 There are still 72125 missing values in ActualSales
-
-# 72125 missing ActualSales
-
-```{r Testing}
+```{r Testing 72125 missing values}
 test1 <- transaction.df %>% 
   filter(is.na(transaction.df$ActualSales))
 
@@ -360,19 +418,37 @@ head(transaction.promotion.df <-read.table(paste0(path,
 
 Transforming TransactionDate into POSIXct format
 ```{r Dates as.Date}
-transaction.promotion.df$TransactionDate <- as.POSIXct(transaction.promotion.df$TransactionDate,
+transaction.promotion.df$TransactionDate <-
+  as.POSIXct(transaction.promotion.df$TransactionDate,
                                                        format = "%Y-%m-%d",
                                                        tz = time_at_tz(
-                                                         Sys.timezone(location = TRUE)))
+                                                         Sys.timezone(location =
+                                                                        TRUE)))
 
+```
 
+```{r Cleaning StoreKey}
+#Checking keys
+unique(transaction.promotion.df$StoreKey)
+
+transaction.promotion.df$StoreKey <-  gsub("_Key", "",
+                                           transaction.promotion.df$StoreKey)
+transaction.promotion.df$StoreKey <- gsub("Key", "",
+                                          transaction.promotion.df$StoreKey)
+transaction.promotion.df$StoreKey <- gsub("key ", "",
+                                          transaction.promotion.df$StoreKey)
+transaction.promotion.df$StoreKey <- gsub(" key ", "",
+                                          transaction.promotion.df$StoreKey)
+transaction.promotion.df$StoreKey <- gsub("  key ", "",
+                                          transaction.promotion.df$StoreKey)
 ```
 
 Transforming StoreKey, ProductKey and Promotion Key into factors
 ```{r Factorization}
 transaction.promotion.df$StoreKey <- as.factor(transaction.promotion.df$StoreKey)
 transaction.promotion.df$ProductKey <- as.factor(transaction.promotion.df$ProductKey)
-transaction.promotion.df$PromotionKey <- as.factor(transaction.promotion.df$PromotionKey)
+transaction.promotion.df$PromotionKey <-
+  as.factor(transaction.promotion.df$PromotionKey)
 ```
 
 ```{r Overview}
@@ -392,13 +468,6 @@ splitting_years <- function(transaction.df,start,end){
                           tz = time_at_tz(
                             Sys.timezone(location = TRUE)))),])
   }
-```
-
-Removing 2012 relative data
-```{r}
-summary(transaction.df <- splitting_years(transaction.df, "2020-01-01","2022-12-31"))
-
-# Now it's OK
 ```
 
 _____________________________________
@@ -431,7 +500,6 @@ Now we will split the data frame transaction into 2020, 2021, and 2022
 transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
 transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
 transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
-
 ```
 
 __________________________________________________________________________-
@@ -466,10 +534,6 @@ transactions2020 <- left_join(transactions2020,
 
 ```
 
-```{r Saving backup}
-save(transactions2020, file = "transactions2020.RData")
-```
-
 ## Exploration of missing values
 
 IMPORTANT PREMISE:
@@ -479,7 +543,7 @@ The keys adjustments were done during the process of data transformation of the 
 summary(transactions2020)
 ```
 
-14091 missing DistributionChannel and StoreType
+
 
 ```{r Missing distribution channels and store type}
 head(unique(transactions2020$StoreKey[which(is.na(transactions2020$StoreType))]), 20)
@@ -532,7 +596,97 @@ any(!is.na(mismatch$ProductKey)) # No match detected
 remove(noinfo_promo, mismatch)
 ```
 
-Why some promotions don't have the correspondent information? What can we do about them?
+Why some promotions don't have the correspondent informations? What can we do about them?
+
+
+__________________________________________________________________________-
+# Transactions2021
+
+Now it is possible to merge the subsets
+```{r Merging 2021 transactions with all information}
+# CPI
+transactions2021 <- left_join(transactions2021, 
+                              cpi.df,
+                              by = c("TransactionDate" = "Date_daily"))
+
+# Store
+transactions2021 <- left_join(transactions2021,
+                              store.df,
+                              by = "StoreKey")
+
+# Product
+transactions2021 <- left_join(transactions2021,
+                              product.df,
+                              by = "ProductKey")
+
+# Promotion Key
+transactions2021 <- left_join(transactions2021,
+                              transaction.promotion.df,
+                              by = c("TransactionDate", "StoreKey", "ProductKey"))
+
+# Promotion
+transactions2021 <- left_join(transactions2021,
+                              promotion.df,
+                              by = "PromotionKey")
+
+```
+
+```{r}
+summary(transactions2021)
+```
+
+__________________________________________________________________________-
+# Transactions2022
+
+Now it is possible to merge the subsets
+```{r Merging 2022 transactions with all information}
+# CPI
+transactions2022 <- left_join(transactions2022, 
+                              cpi.df,
+                              by = c("TransactionDate" = "Date_daily"))
+
+# Store
+transactions2022 <- left_join(transactions2022,
+                              store.df,
+                              by = "StoreKey")
+
+# Product
+transactions2022 <- left_join(transactions2022,
+                              product.df,
+                              by = "ProductKey")
+
+# Promotion Key
+transactions2022 <- left_join(transactions2022,
+                              transaction.promotion.df,
+                              by = c("TransactionDate", "StoreKey", "ProductKey"))
+
+# Promotion
+transactions2022 <- left_join(transactions2022,
+                              promotion.df,
+                              by = "PromotionKey")
+
+```
+
+```{r}
+summary(transactions2022)
+```
+
+We are unable to detect duplicate transactions since there is not a unique key for each transaction. Duplicates might be related to the same type of transaction occurred on the same day.
+
+```{r Checking duplicate observation}
+# Computationally expensive (it takes a long time to process)
+trans.duplicates <- rbind(duplicated(transactions2020),
+                          duplicated(transactions2021),
+                          duplicated(transactions2022))
+```
+
+# Saving datasets
+```{r}
+save(transactions2020, file = "transactions2020.RData")
+save(transactions2021, file = "transactions2021.RData")
+save(transactions2022, file = "transactions2022.RData")
+
+```
 
 _________________________________________________________
 # Interactive Dashboard
