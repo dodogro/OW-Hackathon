@@ -431,7 +431,7 @@ transaction.promotion.df$TransactionDate <-
 #Checking keys
 unique(transaction.promotion.df$StoreKey)
 
-transaction.promotion.df$StoreKey <-  gsub("_Key", "",
+transaction.promotion.df$StoreKey <- gsub("_Key", "",
                                            transaction.promotion.df$StoreKey)
 transaction.promotion.df$StoreKey <- gsub("Key", "",
                                           transaction.promotion.df$StoreKey)
@@ -689,18 +689,20 @@ save(transactions2022, file = "transactions2022.RData")
 ```
 
 _________________________________________________________
-# Interactive Dashboard
+# Creating Dataset for the Interactive Dashboard
 ```{r Interactive Dashboard}
 # Trial 
 transaction.df.s <- merge(transaction.df, store.df)
 transaction.df.p <- merge(transaction.df.m, product.df)
 transaction.df.pr <- merge(transaction.df.m, transaction.promotion.df)
-transaction.df.pr <- transaction.df.pr[-c(4,5,14)]
+transaction.df.pr <- transaction.df.pr[-c(4,5,14)] 
 transaction.df <- merge(transaction.df.pr, promotion.df)
 
 sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
+
+save(sales_volumes, file = paste0(path,"MergedData.RData"))
 ```
 
 ```{r UI-Creation}
@@ -772,21 +774,32 @@ ui <- fluidPage(
                                 # tags$p("Summary Statistics"),
                                 #valueBoxOutput(outputId = "MeanDiscount"),
                                 #valueBoxOutput(outputId = "MeanSale"),
-                                valueBoxOutput(outputId = "TotalSales"),
-                                valueBoxOutput(outputId = "TotalDiscount"),
-                                valueBoxOutput(outputId = "Volumes")
+                                valueBoxOutput(outputId = "TotalSales1"),
+                                valueBoxOutput(outputId = "TotalDiscount1"),
+                                valueBoxOutput(outputId = "Volumes1")
                                 ),
               
               tabPanel(tags$p("Volumes by PromoMechanic"),
-                       plotOutput(outputId = "PromotionMechanism")
+                       plotOutput(outputId = "PromotionMechanism"),
+                       valueBoxOutput(outputId = "TotalSales2"),
+                       valueBoxOutput(outputId = "TotalDiscount2"),
+                       valueBoxOutput(outputId = "Volumes2")
+                                
                        ),
               
               tabPanel(tags$p("Volumes by Stores"),
-                       ggiraphOutput(outputId = "Store")
+                       ggiraphOutput(outputId = "Store"),
+                       valueBoxOutput(outputId = "TotalSales3"),
+                       valueBoxOutput(outputId = "TotalDiscount3"),
+                       valueBoxOutput(outputId = "Volumes3")
                        ),
               
               tabPanel(tags$p("Products' Growth"),
-                       plotOutput(outputId = "CategoryGrowth"))
+                       plotOutput(outputId = "CategoryGrowth"),
+                       valueBoxOutput(outputId = "TotalSales4"),
+                       valueBoxOutput(outputId = "TotalDiscount4"),
+                       valueBoxOutput(outputId = "Volumes4")
+                       )
              )
            )
         )
@@ -900,25 +913,32 @@ server <- function(input, output){
     #         value = "MeanDailySales (MYR)")
   #})
   
-  output$Volumes <- renderValueBox({
-     valueBox(subtitle = sum(datasetInput()$Volumes),
-              value = "Volumes (Unit)",
-              width = 4,
-              color = "navy")
+  lapply(1:4, function(nr){
+    output[[paste0("Volumes", nr)]] <- renderValueBox({
+    valueBox(
+    subtitle = sum(datasetInput()$Volumes),
+    value = "Volumes (Unit)",
+    width = 4,
+    color = "navy")
+      })      
   })
   
-   output$TotalDiscount <- renderValueBox({
-     valueBox(subtitle = sum(datasetInput()$Daily_Discount),
-              value = "TotDiscount (MYR)",
-              width = 4, 
-              color = "olive")
+  lapply(1:4, function(nr){
+    output[[paste0("TotalDiscount", nr)]] <- renderValueBox({
+    valueBox(
+    subtitle = sum(datasetInput()$Daily_Discount),
+    value = "TotDiscount (MYR)",
+    width = 4,
+    color = "navy")})      
   })
    
-   output$TotalSales<- renderValueBox({
-     valueBox(subtitle = sum(datasetInput()$Daily_Sum),
-              value = "TotSales (MYR)",
-              width = 4,
-              color = "green")
+   lapply(1:4, function(nr){
+    output[[paste0("TotalSales", nr)]] <- renderValueBox({
+    valueBox(
+    subtitle = sum(datasetInput()$Daily_Sum),
+    value = "TotSales (MYR)",
+    width = 4,
+    color = "navy")})      
   })
 
   output$Store <- renderggiraph({
