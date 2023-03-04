@@ -1,6 +1,6 @@
 # HackAtOW - Team: No R-egrets 
 
-The following text serves to purpose of guiding intuitively the viewer throughout our codes and analyses. Moreover, it is highly recommended to follow the prescribed order to have a flawlessly running code. 
+The following text serves to the purpose of guiding intuitively the viewer throughout our codes and analyses. Moreover, it is highly recommended to follow the prescribed order to have a flawlessly running code. 
 
 - The first file named "Data Cleaning" has been designed in order to address all the problems related to misspelled data entries, peculiar numbers, errors, etc. In few words, it has to be ran as first script so as to have for the following analyses cleaned data. The script is subdivided into "chunks" each of them commented thoroghly to make the viewer understand what ouor thoughts have been and the assumptions that have been made. 
 
