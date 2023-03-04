@@ -5,6 +5,7 @@ output: html_notebook
 Setting path
 NOTE: In order to run the script smoothly we recommend to have saved the folder
 containing all the data sets in a separate folder called "Data-OW"
+
 ```{r Path Setting}
 path = "../Data-OW/"
 ```
@@ -13,7 +14,7 @@ Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
                shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
-               vtable, ggcharts)
+               vtable, ggcharts, ggiraph)
 
 # Removing scientific notation
 
@@ -22,8 +23,10 @@ options(scipen=999)
 ```
 
 ```{r Loading the Pre-Processed Data}
-load(paste0(path,"MergedData.RData"))
+load(paste0(path,"DBData.RData"))
+
 ```
+
 ```{r UI-Creation}
 
 ui <- fluidPage(
@@ -125,7 +128,6 @@ ui <- fluidPage(
       )
     )
     
-
 ```
 
 ```{r Server Creation}

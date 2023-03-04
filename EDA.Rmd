@@ -70,7 +70,7 @@ In March (3) and May (5) 2020, respectively 555 and 550 stores made at least one
 transactions2020$DayOfWeek <- droplevels(transactions2020$DayOfWeek)
 transactions2021$DayOfWeek <- droplevels(transactions2021$DayOfWeek)
 transactions2022$DayOfWeek <- droplevels(transactions2022$DayOfWeek)
-df$
+df$DayOfWeek <- droplevels(df$DayOfWeek)
 
 # Re-ordering levels
 transactions2020$DayOfWeek <- factor(transactions2020$DayOfWeek,
