@@ -33,8 +33,7 @@ str(product.df)
 Cleaning ProductKey Column
 Note on RegEx: (i?) is used to render the match case insensitive
 ```{r Cleaning ProductKey}
-product.df$ProductKey <- gsub("(i?)key_", "", product.df$ProductKey)
-length(product.df$ProductKey)
+length(product.df$ProductKey <- gsub("(i?)key_", "", product.df$ProductKey))
 
 # OK
 ```
@@ -106,51 +105,10 @@ cpi.df$Date_daily <- as.POSIXct(cpi.df$Date_daily,
 summary(cpi.df)
 ```
 
-Most of monthly data are missing, thus the information must be reconstructed starting from the daily data. We have noticed that the monthly CPI index is constructed by simply taking the first-of-the-month index. Is it correct though? 
-Idea: creating the correspondence between month and year, and computing the monthly CPI as the mean of the daily CPI
-
-```{r Reproducing CPI monthly as daily average}
-# Creating Date_Monthly and CPI_monthly columns
-head(cpi.df1 <- cpi.df %>% 
-     group_by(month(Date_daily), year(Date_daily)) %>% 
-     mutate(Date_monthly1 = paste0(year(Date_daily),"-",month(Date_daily),"-01"),
-             CPI_monthly1 = mean(CPI_daily)))
-
-cpi.df1 <- cpi.df1 %>% 
-  ungroup() %>% 
-  select(Date_monthly1, CPI_monthly1, Date_daily, CPI_daily)
-
-# Creating the date format for Date_monthly1
-cpi.df1$Date_monthly1 <- as.POSIXct(cpi.df1$Date_monthly1,
-                                    format = "%Y-%m-%d",
-                                    tz = time_at_tz(
-                                      Sys.timezone(location = TRUE)))
-
-# Correcting columns name
-colnames(cpi.df1) <- c("Date_monthly",
-                       "CPI_monthly",
-                       "Date_daily",
-                       "CPI_daily")
-```
-
-Clearing the environment and final check
-```{r Environment Clearnance}
-# For sake of keeping the same data sets' names
-cpi.df <- cpi.df1
-remove(cpi.df1)
-
-# Final check
-str(cpi.df)
-
-# OK
-```
-
-IMPORTANT NOTE:
-There is a slight difference in monthly CPI computed as the mean of daily values and the one provided by the data due to the reason stated above. 
-
 ```{r Checking for duplicates}
 any(duplicated(cpi.df))
 ```
+
 No duplicates in the dataset
 
 ## Plotting average monthly CPI
@@ -190,8 +148,7 @@ promotion.df$PromotionEndDate <- as.POSIXct(promotion.df$PromotionEndDate,
 
 Transforming promotion mechanics into factor
 ```{r Factorization}
-promotion.df$PromoMechanic <- as.factor(promotion.df$PromoMechanic)
-table(promotion.df$PromoMechanic)
+table(promotion.df$PromoMechanic <- as.factor(promotion.df$PromoMechanic))
 ```
 There are 15 promotion types + 1 unknown
 
@@ -210,16 +167,13 @@ promotion.df <- promotion.df %>%
 ```
 
 ```{r}
-promo.avg.duration <- promotion.df %>% 
+plot(promo.avg.duration <- promotion.df %>% 
   group_by(PromoMechanic) %>% 
-  summarise(avg.duration = mean(duration))
-
-plot(promo.avg.duration, type = "b")
+  summarise(avg.duration = mean(duration)), type = "b")
 ```
 
 ```{r Unknown promotions}
-unknown.promotions <- promotion.df[promotion.df$PromoMechanic == "Unknown",]
-view(unknown.promotions)
+view(unknown.promotions <- promotion.df[promotion.df$PromoMechanic == "Unknown",])
 ```
 
 Some unknown promotions are set without ending date, as a default is equal to 2049-12-31
@@ -267,7 +221,7 @@ store.df$Region_Lvl2 <- as.factor(store.df$Region_Lvl2)
 Final check
 ```{r Exploration}
 table(store.df$Region_Lvl1)
-as.data.frame(table(store.df$Region_Lvl2))
+as.data.frame(sort(table(store.df$Region_Lvl2), decreasing = T))
 ```
 
 ```{r Check store key duplicates}
@@ -297,17 +251,13 @@ head(transaction.df <- read.table(paste0(path,
 ```{r Overview}
 str(transaction.df)
 ```
-During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding
+During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding. 
+Note on RegEx: \\s* serves to match one or more blank spaces before and after the spcified string
+                _?  serves to look for possible underscore before the string and after the space
+                [kK][eE][yY] is the word to look for in every possible combination of upper and lower                 case
 ```{r StoreKey and ProductKey adjustment}
-transaction.df$StoreKey <-  gsub("_Key", "", transaction.df$StoreKey)
-transaction.df$StoreKey <- gsub("Key", "", transaction.df$StoreKey)
-transaction.df$StoreKey <- gsub("key ", "", transaction.df$StoreKey)
-transaction.df$StoreKey <- gsub(" key ", "", transaction.df$StoreKey)
-transaction.df$StoreKey <- gsub("  key ", "", transaction.df$StoreKey)
-transaction.df$ProductKey <- gsub("Key", "", transaction.df$ProductKey)
-transaction.df$ProductKey <- gsub("key ", "", transaction.df$ProductKey)
-transaction.df$ProductKey <- gsub(" key ", "", transaction.df$ProductKey)
-transaction.df$ProductKey <- gsub("  key ", "", transaction.df$ProductKey)
+head(transaction.df$StoreKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.df$StoreKey), 10)
+head(transaction.df$ProductKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.df$ProductKey), 10)
 ```
 
 ```{r Check for duplicates}
@@ -327,11 +277,11 @@ Not all StoreKey in the transactions dataset are present (724 against 299).
 There is one ProductKey without a match (299 against 298)
 
 ```{r Check ProductKey}
-missing.productkey <- transaction.df[!(transaction.df$ProductKey
-                                       %in% product.df$ProductKey),]
+(missing.productkey <- transaction.df[!(transaction.df$ProductKey
+                                       %in% product.df$ProductKey),])
 ```
 
-There are 23978 registered transactions without information that needs to be removed
+There are 23978 registered transactions without information that need to be removed
 
 ```{r Removing missing values}
 transaction.df <- transaction.df[transaction.df$ProductKey != "",]
@@ -402,7 +352,7 @@ summary(transaction.df)
 ```
 No more missing values 
 
-```{r}
+```{r Removing Test}
 remove(test1)
 ```
 
@@ -427,20 +377,11 @@ transaction.promotion.df$TransactionDate <-
 
 ```
 
+Explanation on RegEx: See above in section "StoreKey and ProductKey adjustment for transaction.df"
 ```{r Cleaning StoreKey}
 #Checking keys
 unique(transaction.promotion.df$StoreKey)
-
-transaction.promotion.df$StoreKey <- gsub("_Key", "",
-                                           transaction.promotion.df$StoreKey)
-transaction.promotion.df$StoreKey <- gsub("Key", "",
-                                          transaction.promotion.df$StoreKey)
-transaction.promotion.df$StoreKey <- gsub("key ", "",
-                                          transaction.promotion.df$StoreKey)
-transaction.promotion.df$StoreKey <- gsub(" key ", "",
-                                          transaction.promotion.df$StoreKey)
-transaction.promotion.df$StoreKey <- gsub("  key ", "",
-                                          transaction.promotion.df$StoreKey)
+transaction.promotion.df$StoreKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.promotion.df$StoreKey)
 ```
 
 Transforming StoreKey, ProductKey and Promotion Key into factors
@@ -455,6 +396,9 @@ transaction.promotion.df$PromotionKey <-
 summary(transaction.promotion.df)
 ```
 
+Such function will be used lately for splitting in different years the data set. This
+will be useful also for the 3rd task, which regards creating a machine learning algorithm,
+for training and testing purposes.
 ```{r Creating splitting function specifically for transaction.df}
 
 splitting_years <- function(transaction.df,start,end){
@@ -478,9 +422,6 @@ head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"),
                                        header = TRUE,
                                        sep = ","))
 ```
-Why and which holidays could be important? We should search each period and merge the information
-
-
 # Merging data sets
 Note: Due to the immense data frame size, we are forced to work piecewise, otherwise
 our machines will not able to function well. Moreover, since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
@@ -543,8 +484,6 @@ The keys adjustments were done during the process of data transformation of the 
 summary(transactions2020)
 ```
 
-
-
 ```{r Missing distribution channels and store type}
 head(unique(transactions2020$StoreKey[which(is.na(transactions2020$StoreType))]), 20)
 ```
@@ -596,10 +535,9 @@ any(!is.na(mismatch$ProductKey)) # No match detected
 remove(noinfo_promo, mismatch)
 ```
 
-Why some promotions don't have the correspondent informations? What can we do about them?
+Why some promotions don't have the correspondent information? What can we do about them?
 
-
-__________________________________________________________________________-
+________________________________________________________________________________
 # Transactions2021
 
 Now it is possible to merge the subsets
@@ -689,20 +627,23 @@ save(transactions2022, file = "transactions2022.RData")
 ```
 
 _________________________________________________________
-# Creating Dataset for the Interactive Dashboard
-```{r Interactive Dashboard}
+# Creating Dataset for next tasks and the Interactive Dashboard
+```{r Merged Data set}
 # Trial 
-transaction.df.s <- merge(transaction.df, store.df)
-transaction.df.p <- merge(transaction.df.m, product.df)
-transaction.df.pr <- merge(transaction.df.m, transaction.promotion.df)
-transaction.df.pr <- transaction.df.pr[-c(4,5,14)] 
-transaction.df <- merge(transaction.df.pr, promotion.df)
+a <- merge(transaction.df, store.df)
+b <- merge(a, product.df)
+c <- left_join(b, transaction.promotion.df, by =  c("TransactionDate", "StoreKey", "ProductKey"))
+transaction.df <- left_join(c, promotion.df, by = "PromotionKey")
 
+save(transaction.df, file = paste0(path,"MergedData.RData"))
+```
+
+```{r Interactive Dashboard}
 sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 
-save(sales_volumes, file = paste0(path,"MergedData.RData"))
+save(sales_volumes, file = paste0(path,"DBData.RData"))
 ```
 
 ```{r UI-Creation}
