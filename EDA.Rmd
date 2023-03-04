@@ -8,42 +8,25 @@ pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
                lattice, gcookbook, tidyr)
 ```
 
-
 ```{r}
-load(file = "transactions2020.RData")
-load(file = "transactions2021.RData")
-load(file = "transactions2022.RData")
+path = "../Data-OW/"
+load(file = paste0(path,"MergedData.RData"))
+df <- transaction.df
 ```
-
-```{r}
-df <- rbind(transactions2020, transactions2021, transactions2022)
-```
-
 
 # Checking summaries
 ```{r Summary 2020}
-summary(transactions2020)
+summary(df)
 ```
-
-```{r Summary 2021}
-summary(transactions2021)
-```
-
-```{r Summary 2022}
-summary(transactions2022)
-```
-
-
 
 # Check for drastic data changes
 We expect the same order of magnitude in the number of transaction recorded for each month during the three years. If that is not the case, probably there has been some mistakes in the data collection process.
 
 ```{r}
-trans.number <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+trans.number <- df %>% 
   group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
   summarise(trans.record = n()) %>% 
   arrange(Year)
-
 
 ggplot(data = trans.number, aes(x = Month, y = trans.record, group = Year,
                                 colour = factor(Year))) +
@@ -57,7 +40,8 @@ Huge decrease in April 2020 with 151128 transactions considered a mean equal to 
 
 Going deep into April 2020
 ```{r}
-april2020 <- transactions2020 %>% 
+april2020 <-  df %>% 
+  filter(year(TransactionDate) == 2020) %>% 
   filter(month(TransactionDate) == 4) %>% 
   group_by(Day = day(TransactionDate)) %>% 
   summarise(trans.recorded = n())
@@ -66,14 +50,15 @@ view(april2020)
 ```
 
 There are no holes in data recordings apparently, just low values
-
 Filtering by month number it's possible to check how many stores made a sale during that particular month compared to the total number of stores that made at least one sale during 2020
+
 ```{r Number of stores that made a sale}
-month2020.wide <- transactions2020 %>% 
+month2020.wide <- df %>% 
+  filter(year(TransactionDate) == 2020) %>% 
   filter(month(TransactionDate) == 4)
 
 length(unique(month2020.wide$StoreKey))
-length(unique(transactions2020$StoreKey))
+length(unique(df[year(df$TransactionDate) == 2020,]$StoreKey))
 ```
 In March (3) and May (5) 2020, respectively 555 and 550 stores made at least one sale, but in April just 513 stores made a sale during that period. Possible Covid-related issues, considering that during the year, the number of active stores (stores that made at least one sale during the year) were 601.
 
@@ -85,7 +70,7 @@ In March (3) and May (5) 2020, respectively 555 and 550 stores made at least one
 transactions2020$DayOfWeek <- droplevels(transactions2020$DayOfWeek)
 transactions2021$DayOfWeek <- droplevels(transactions2021$DayOfWeek)
 transactions2022$DayOfWeek <- droplevels(transactions2022$DayOfWeek)
-
+df$
 
 # Re-ordering levels
 transactions2020$DayOfWeek <- factor(transactions2020$DayOfWeek,
