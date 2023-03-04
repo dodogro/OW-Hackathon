@@ -349,13 +349,53 @@ ggplot(data = retail.price, aes(x = time.interval, y = avg.price, group = Produc
 Huge jump in the average unitary price ticket of categories AD and AE starting from July 2021. A deeper exploration is needed in order to check if the price of the items sold in the categories changed or it is due to an increase in selling of higher priced products belonging to the specific category.
 
 ```{r Pareto analysis}
-time.interval.start <- as.POSIXct("2020-01-01", format = "%Y-%m-%d")
-time.interval.end <- as.POSIXct("2022-12-31", format = "%Y-%m-%d")
+#################################################
+# Select the timeframe of analysis
+time.interval <- interval(as.POSIXct("2022-01-01",
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))),
+                          as.POSIXct("2022-12-31",
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))))
 
-category.filter <- c("")
+# Select the category: AA, AB, AC, AD, AE
+category.filter <- c("AC")
 
+# Select the top N products to check
+topN <- 10
 
+#################################################
 
+# Creating the pareto dataset for the plot
+pareto.analysis <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  filter(ProductCategory_Lvl2 %in% category.filter &
+           TransactionDate %within% time.interval) %>% 
+  select(ProductKey, ProductCategory_Lvl2, ActualSales) %>% 
+  group_by(ProductKey, ProductCategory_Lvl2) %>% 
+  summarise(tot.revenues = sum(ActualSales)) %>% 
+  ungroup() %>% 
+  arrange(desc(tot.revenues)) %>% 
+  mutate(perc.revenues = cumsum(tot.revenues)/sum(tot.revenues))
+
+#Creating the dataset with the top N products
+topN.products <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+  filter(ProductKey %in% pareto.analysis$ProductKey[1:topN])
+
+# Pareto analysis plot
+ggplot(data = pareto.analysis, aes(x = factor(ProductKey, levels = ProductKey), y = perc.revenues)) +
+  geom_bar(stat = "identity", aes(fill = pareto.analysis$tot.reveneues, alpha = 0.6)) +
+  geom_hline(yintercept = 0.75, colour = "blue") +
+  geom_hline(yintercept = 0.90, colour = "red") +
+  geom_point() +
+  geom_path() +
+  scale_x_discrete(breaks = pareto.analysis$ProductKey) +
+  ylab("Cumulated revenues") +
+  xlab("ProductKey")
+
+# + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+# Not visible with many Product Keys
 ```
+
+
 
 
