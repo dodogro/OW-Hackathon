@@ -14,7 +14,8 @@ Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
                shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
-               vtable, ggcharts, ggiraph)
+               ggcharts, packcircles, viridis, ggiraph, lattice, gcookbook, 
+               tidyr, timechange)
 
 # Removing scientific notation
 
@@ -24,7 +25,7 @@ options(scipen=999)
 
 ```{r Loading the Pre-Processed Data}
 load(paste0(path,"DBData.RData"))
-
+str(df <- sales_volumes)
 ```
 
 ```{r UI-Creation}
@@ -84,6 +85,12 @@ ui <- fluidPage(
                          multiple = TRUE,
                          selected = "Percentage off"),
              
+             numericInput(inputId = "TopN",
+                          label = "Top-N-Pareto",
+                          value = 5, 
+                          max = 20,
+                          min = 3),
+             
              downloadButton(outputId = "report", 
                             label = "Generate report")
              ),
@@ -106,7 +113,6 @@ ui <- fluidPage(
                        valueBoxOutput(outputId = "TotalSales2"),
                        valueBoxOutput(outputId = "TotalDiscount2"),
                        valueBoxOutput(outputId = "Volumes2")
-                                
                        ),
               
               tabPanel(tags$p("Volumes by Stores"),
@@ -121,6 +127,13 @@ ui <- fluidPage(
                        valueBoxOutput(outputId = "TotalSales4"),
                        valueBoxOutput(outputId = "TotalDiscount4"),
                        valueBoxOutput(outputId = "Volumes4")
+                       ),
+              
+              tabPanel(tags$p("Category In-depth"),
+                       plotOutput(outputId = "ParetoAnalysis"),
+                       valueBoxOutput(outputId = "TotalSales5"),
+                       valueBoxOutput(outputId = "TotalDiscount5"),
+                       valueBoxOutput(outputId = "Volumes5")
                        )
              )
            )
@@ -134,7 +147,7 @@ ui <- fluidPage(
 server <- function(input, output){
   
   datasetInput <- reactive({
-      sales_volumes %>% 
+      df %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
       filter(StoreKey %in% input$StoreID) %>% 
@@ -148,7 +161,7 @@ server <- function(input, output){
     })
   
   datasetInput2 <- reactive({
-      sales_volumes %>% 
+      df %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
       filter(StoreKey %in% input$StoreID) %>% 
@@ -162,21 +175,25 @@ server <- function(input, output){
   })
   
   store.summary <- reactive({
-    sales_volumes %>% 
-    select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate) %>% 
-    filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-    group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
-    summarise(revenues = sum(ActualSales)) %>% 
-    mutate(txt = paste("Store: ",StoreKey, "\n",
-                        "Yearly sales: ", round(revenues/1000, digits = 0),"kMYR", "\n",
-                        "Region lvl.1: ", Region_Lvl1, "\n",
-                        "Region lvl.2: ", Region_Lvl2)) %>% 
-    arrange(desc(revenues)) %>% 
-    ungroup()
+      df %>% 
+      select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate, 
+             DistributionChannel, ProductCategory_Lvl2, ProductKey) %>% 
+      filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+      filter(DistributionChannel %in% input$Channel) %>% 
+      filter(ProductCategory_Lvl2 %in% input$Category) %>%  
+      filter(ProductKey %in% input$ProductID) %>% 
+      group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
+      summarise(revenues = sum(ActualSales)) %>% 
+      mutate(txt = paste("Store: ",StoreKey, "\n",
+                         "Yearly sales: ", round(revenues/1000, digits = 0),"kMYR", "\n",
+                         "Region lvl.1: ", Region_Lvl1, "\n",
+                         "Region lvl.2: ", Region_Lvl2)) %>% 
+      arrange(desc(revenues)) %>% 
+      ungroup()
   })
   
   transactions.sag <- reactive({
-    sales_volumes %>% 
+    df %>% 
     filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
     filter(DistributionChannel %in% input$Channel) %>% 
     filter(StoreKey %in% input$StoreID) %>% 
@@ -184,6 +201,26 @@ server <- function(input, output){
     group_by(ProductCategory_Lvl2) %>%  
     arrange(TransactionDate) %>% 
     mutate(cum_rev = cumsum(ActualSales))
+  })
+  
+  pareto.analysis <- reactive({
+    df %>% 
+    select(ProductKey, ProductCategory_Lvl2, ActualSales, TransactionDate, DistributionChannel, StoreKey) %>% 
+    filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
+    filter(DistributionChannel %in% input$Channel) %>% 
+    filter(StoreKey %in% input$StoreID) %>% 
+    filter(ProductCategory_Lvl2 %in% input$Category) %>% 
+    group_by(ProductKey, ProductCategory_Lvl2) %>% 
+    summarise(tot.revenues = sum(ActualSales)) %>% 
+    na.omit() %>% 
+    ungroup() %>% 
+    arrange(desc(tot.revenues)) %>% 
+    mutate(per.revenues = base::cumsum(tot.revenues)/sum(tot.revenues)) 
+  })
+  
+  topN.products <- reactive({
+    pareto.analysis() %>% 
+      filter(ProductKey %in% pareto.analysis()$ProductKey[1:input$TopN])
   })
   
   # BarPlot
@@ -234,7 +271,7 @@ server <- function(input, output){
     #         value = "MeanDailySales (MYR)")
   #})
   
-  lapply(1:4, function(nr){
+  lapply(1:5, function(nr){
     output[[paste0("Volumes", nr)]] <- renderValueBox({
     valueBox(
     subtitle = sum(datasetInput()$Volumes),
@@ -244,7 +281,7 @@ server <- function(input, output){
       })      
   })
   
-  lapply(1:4, function(nr){
+  lapply(1:5, function(nr){
     output[[paste0("TotalDiscount", nr)]] <- renderValueBox({
     valueBox(
     subtitle = sum(datasetInput()$Daily_Discount),
@@ -253,7 +290,7 @@ server <- function(input, output){
     color = "navy")})      
   })
    
-   lapply(1:4, function(nr){
+   lapply(1:5, function(nr){
     output[[paste0("TotalSales", nr)]] <- renderValueBox({
     valueBox(
     subtitle = sum(datasetInput()$Daily_Sum),
@@ -262,7 +299,7 @@ server <- function(input, output){
     color = "navy")})      
   })
 
-  output$Store <- renderggiraph({
+  output$Store <- ggiraph::renderggiraph({
     packing <- circleProgressiveLayout(store.summary()$revenues, sizetype = "area")
     data <- cbind(store.summary(), packing)
     data.gg <- circleLayoutVertices(packing, npoints = 50)
@@ -281,7 +318,7 @@ server <- function(input, output){
     coord_equal()
   
   # Interactive
-  widg <- ggiraph(ggobj = p, width_svg = 7, height_svg = 7)
+  widg <- ggiraph::ggiraph(ggobj = p, width_svg = 7, height_svg = 7)
   widg
   })
 
@@ -297,9 +334,25 @@ server <- function(input, output){
                   axis.title.y = element_blank(),
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA))
-      
   })
-    
+  
+  output$ParetoAnalysis <- renderPlot({
+    print(ggplot(data = topN.products(), aes(x = factor(ProductKey, levels = ProductKey), y = per.revenues)) +
+    geom_bar(stat = "identity", aes(fill = topN.products()$tot.revenues, alpha = 0.6)) +
+    geom_hline(yintercept = 0.75, colour = "blue") +
+    geom_hline(yintercept = 0.90, colour = "red") +
+    geom_point() +
+    geom_path() +
+    scale_x_discrete(breaks = topN.products()$ProductKey) +
+    ylab("Cumulated revenues") +
+    xlab("ProductKey") + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          panel.background = element_rect(fill=NA),
+          plot.background = element_rect(fill=NA),
+          legend.position =  'none',
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank()))
+  })
 }
 
 ```

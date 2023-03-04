@@ -5,7 +5,7 @@ output: html_notebook
 
 ```{r}
 pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
-               lattice, gcookbook, tidyr)
+               lattice, gcookbook, tidyr, timechange)
 ```
 
 ```{r}
@@ -67,35 +67,22 @@ In March (3) and May (5) 2020, respectively 555 and 550 stores made at least one
 
 ```{r Checking relative frequencies}
 # Dropping unused level
-transactions2020$DayOfWeek <- droplevels(transactions2020$DayOfWeek)
-transactions2021$DayOfWeek <- droplevels(transactions2021$DayOfWeek)
-transactions2022$DayOfWeek <- droplevels(transactions2022$DayOfWeek)
 df$DayOfWeek <- droplevels(df$DayOfWeek)
 
 # Re-ordering levels
-transactions2020$DayOfWeek <- factor(transactions2020$DayOfWeek,
-                                     levels=c('Monday', 'Tuesday', 'Wednesday',
-                                              'Thursday', 'Friday', 'Saturday',
-                                              'Sunday'))
 
-transactions2021$DayOfWeek <- factor(transactions2021$DayOfWeek,
-                                     levels=c('Monday', 'Tuesday', 'Wednesday',
-                                              'Thursday', 'Friday', 'Saturday',
-                                              'Sunday'))
+df$DayOfWeek <- factor(df$DayOfWeek,
+                       levels=c('Monday', 'Tuesday', 'Wednesday',
+                                'Thursday', 'Friday', 'Saturday',
+                                'Sunday'))
 
-transactions2022$DayOfWeek <- factor(transactions2022$DayOfWeek,
-                                     levels=c('Monday', 'Tuesday', 'Wednesday',
-                                              'Thursday', 'Friday', 'Saturday',
-                                              'Sunday'))
 # Checking frequencies
-table(transactions2021$DayOfWeek)
-table(transactions2020$DayOfWeek)
-table(transactions2022$DayOfWeek)
+table(df$DayOfWeek)
 
-dayoftheweek.plot <- as.data.frame(rbind(table(transactions2020$DayOfWeek),
-                                           table(transactions2021$DayOfWeek),
-                                           table(transactions2022$DayOfWeek))) %>% 
-  gather(Day, Frequency, Monday:Sunday)
+dayoftheweek.plot <- df %>% 
+  group_by(year(TransactionDate), df$DayOfWeek) %>% 
+  summarise(Frequency = n())
+
 
 dayoftheweek.plot$Year <- rep(c("2020", "2021", "2022"), 7)
 
@@ -103,7 +90,7 @@ dayoftheweek.plot <- dayoftheweek.plot %>%
   group_by(Year) %>% 
   mutate(rel.frequency = Frequency/sum(Frequency))
 
-dayoftheweek.plot$Day <- factor(dayoftheweek.plot$Day,
+dayoftheweek.plot$Day <- factor(dayoftheweek.plot$`df$DayOfWeek`,
                                 levels=c('Monday', 'Tuesday', 'Wednesday',
                                          'Thursday', 'Friday', 'Saturday',
                                          'Sunday'))
@@ -119,13 +106,7 @@ Transaction more or less disstributed throughout the week with a peak from Frida
 
 ## Weekend Flag
 ```{r WeekendFlag}
-transactions2020$WeekendFlag <- droplevels(transactions2020$WeekendFlag)
-transactions2021$WeekendFlag <- droplevels(transactions2021$WeekendFlag)
-transactions2022$WeekendFlag <- droplevels(transactions2022$WeekendFlag)
-
-table(transactions2020$WeekendFlag)
-table(transactions2021$WeekendFlag)
-table(transactions2022$WeekendFlag)
+table(df$WeekendFlag)
 ```
 
 # Stores overview
@@ -134,7 +115,7 @@ table(transactions2022$WeekendFlag)
 # Select the year
 yr <- "2020"
 
-store.summary <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+store.summary <- df %>% 
   select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate) %>% 
   filter(year(TransactionDate) == yr) %>% 
   group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
@@ -177,8 +158,8 @@ widg
 
 How many stores opened or closed from 2020?
 ```{r Stores opened/closed}
-stores.2020 <- unique(transactions2020$StoreKey)
-stores.2022 <- unique(transactions2022$StoreKey)
+stores.2020 <- unique(df$StoreKey[df$TransactionDate < as.POSIXct("2021-01-01",format = "%Y-%m-%d", tz = "")])
+stores.2022 <- unique(df$StoreKey[df$TransactionDate > as.POSIXct("2022-01-01",format = "%Y-%m-%d", tz = "")])
 
 # Stores closed
 stores.2020[!(stores.2020 %in% stores.2022)]
@@ -193,8 +174,7 @@ remove(stores.2020, stores.2022)
 
 # ProductCategory
 ```{r Exploring tables}
-table(transactions2020$ProductCategory_Lvl2)
-table(transactions2022$ProductCategory_Lvl2)
+table(df$ProductCategory_Lvl2)
 ```
 
 # Product Category
@@ -203,7 +183,7 @@ table(transactions2022$ProductCategory_Lvl2)
 # Select product category
 prod.cat <- c("AA", "AB", "AC", "AD", "AE")
 
-transactions.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+transactions.sag <- df %>% 
   select(TransactionDate, ActualSales, ProductCategory_Lvl2) %>% 
   filter(ProductCategory_Lvl2 %in% prod.cat) %>% 
   group_by(ProductCategory_Lvl2) %>% 
@@ -228,7 +208,7 @@ AD products are irrelevant when compared to other categories, AE shows a really 
 # Select distribution channel
 dist.channel <- c("Physical", "Online")
 
-dist.channel.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+dist.channel.sag <- df %>% 
   select(TransactionDate, ActualSales, DistributionChannel) %>% 
   filter(DistributionChannel %in% dist.channel) %>% 
   group_by(DistributionChannel) %>% 
@@ -255,7 +235,7 @@ Online distribution channel is a very narrow revenues source with low growth
 regions.exclude.Lvl1 <- c("") # Lvl 1 regions to exclude
 regions.exclude.Lvl2 <- c("") # Lvl 2 regions to exclude
 
-reg.distribution.sag <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+reg.distribution.sag <- df %>% 
   select(TransactionDate, ActualSales, Region_Lvl2, Region_Lvl1) %>% 
   filter(!(Region_Lvl1 %in% regions.exclude.Lvl1) | 
            !(Region_Lvl2 %in% regions.exclude.Lvl2)) %>% 
@@ -266,7 +246,7 @@ reg.distribution.sag <- rbind(transactions2020, transactions2021, transactions20
 
 
 ```{r Empty regions}
-empty.regions <- rbind(transactions2021, transactions2022) %>% 
+empty.regions <- df %>% 
   filter(is.na(Region_Lvl2))
 view(empty.regions)
 ```
@@ -275,25 +255,14 @@ StoreKey = 0 is linked to the online distribution channel
 
 # Prices
 ```{r Negative actual sales}
-negative.actual.sales.2020 <- transactions2020 %>% 
+negative.actual.sales <- df %>% 
   filter(ActualSales <= 0)
-negative.actual.sales.2021 <- transactions2021 %>% 
-  filter(ActualSales <= 0)
-negative.actual.sales.2022 <- transactions2022 %>% 
-  filter(ActualSales <= 0)
-negative.actual.sales <- rbind(negative.actual.sales.2020,
-                               negative.actual.sales.2021,
-                               negative.actual.sales.2022)
-
-remove(negative.actual.sales.2020, 
-       negative.actual.sales.2021,
-       negative.actual.sales.2022)
 
 summary(negative.actual.sales)
 ```
 
 ```{r Positive discounts}
-positive.discounts <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+positive.discounts <- df %>% 
   filter(SalesDiscount > 0)
 view(positive.discounts)
 ```
@@ -302,7 +271,7 @@ view(positive.discounts)
 
 
 ```{r Unitary price distribution}
-outliers.actualsales <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+outliers.actualsales <- df %>% 
   filter(RetailFullPrice > 0 & UnitVolume > 0) %>% 
   mutate(unitary.price = RetailFullPrice/UnitVolume)
 
@@ -331,7 +300,7 @@ ggplot(data = retail.price, aes(x = time.interval, y = avg.price, group = Produc
   xlab("Date")
 
 ```
-Huge jump in the average unitary price ticket of categories AD and AE starting from July 2021. A deeper exploration is needed in order to check if the price of the items sold in the categories changed or it is due to an increase in selling of higher priced products belonging to the specific category.
+Huge jump in the average unitary price ticket for categories AD and AE starting from July 2021. A deeper exploration is needed in order to check if the price of the items sold in the categories changed or it is due to an increase in selling of higher priced products belonging to the specific category.
 
 ```{r Pareto analysis}
 #################################################
@@ -347,37 +316,43 @@ time.interval <- interval(as.POSIXct("2022-01-01",
 category.filter <- c("AC")
 
 # Select the top N products to check
-topN <- 10
+topN <- 20
 
 #################################################
 
 # Creating the pareto dataset for the plot
-pareto.analysis <- rbind(transactions2020, transactions2021, transactions2022) %>% 
-  filter(ProductCategory_Lvl2 %in% category.filter &
-           TransactionDate %within% time.interval) %>% 
+pareto.analysis <- df %>% 
+  filter(ProductCategory_Lvl2 %in% category.filter) %>% 
+  filter(TransactionDate %within% time.interval) %>% 
   select(ProductKey, ProductCategory_Lvl2, ActualSales) %>% 
   group_by(ProductKey, ProductCategory_Lvl2) %>% 
   summarise(tot.revenues = sum(ActualSales)) %>% 
+  na.omit() %>% 
   ungroup() %>% 
   arrange(desc(tot.revenues)) %>% 
-  mutate(perc.revenues = cumsum(tot.revenues)/sum(tot.revenues))
+  mutate(per.revenues = base::cumsum(tot.revenues)/sum(tot.revenues)) 
+
 
 #Creating the dataset with the top N products
-topN.products <- rbind(transactions2020, transactions2021, transactions2022) %>% 
+topN.products <- pareto.analysis %>% 
   filter(ProductKey %in% pareto.analysis$ProductKey[1:topN])
 
 # Pareto analysis plot
-ggplot(data = pareto.analysis, aes(x = factor(ProductKey, levels = ProductKey), y = perc.revenues)) +
-  geom_bar(stat = "identity", aes(fill = pareto.analysis$tot.reveneues, alpha = 0.6)) +
+ggplot(data = topN.products, aes(x = factor(ProductKey, levels = ProductKey), y = per.revenues)) +
+  geom_bar(stat = "identity", aes(fill = topN.products$tot.revenues, alpha = 0.6)) +
   geom_hline(yintercept = 0.75, colour = "blue") +
   geom_hline(yintercept = 0.90, colour = "red") +
   geom_point() +
   geom_path() +
-  scale_x_discrete(breaks = pareto.analysis$ProductKey) +
+  scale_x_discrete(breaks = topN.products$ProductKey) +
   ylab("Cumulated revenues") +
-  xlab("ProductKey")
-
-# + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+  xlab("ProductKey") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        panel.background = element_rect(fill=NA),
+        plot.background = element_rect(fill=NA),
+        legend.position =  'none',
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank()) 
 # Not visible with many Product Keys
 ```
 

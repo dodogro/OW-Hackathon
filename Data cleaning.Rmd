@@ -1,6 +1,8 @@
 ---
 title: "Data Cleaning"
 output: html_notebook
+editor_options: 
+  chunk_output_type: console
 ---
 Setting path
 NOTE: In order to run the script smoothly we recommend to have saved the folder
@@ -11,9 +13,8 @@ path = "../Data-OW/"
 
 Importing libraries
 ```{r Importing Libraries and parameters setting}
-pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
-               vtable, ggcharts)
+pacman::p_load(readxl,lubridate,dplyr,timechange,stringr, 
+               ggplot2, ggrepel, tidyverse, ggcharts)
 
 # Removing scientific notation
 
@@ -26,7 +27,7 @@ ___________________________________________________
 Setting the working directory and importing the datasets
 ```{r Laoding Product.df}
 head(product.df <- read.csv(paste0(path,"Hackathon_DimProduct_SAN_vShared.csv"), 
-                       header = TRUE), 10)
+                       header = TRUE), 5)
 str(product.df)
 ```
 
@@ -294,9 +295,7 @@ Trasforming TransactionDate into POSIXct format (it takes a while)
 head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
                                                   format = "%Y-%m-%d",
                                                   tz = time_at_tz(
-                                                    Sys.timezone(location = TRUE))
-                                                  )
-     )
+                                                    Sys.timezone(location = TRUE))))
 
 ```
 
@@ -320,7 +319,7 @@ unique(year(transaction.df$TransactionDate))
 transactions.2012 <- transaction.df %>% 
   filter(year(TransactionDate) == 2012)
 
-# Removing 2012 transactions, possible mistakes but not addressable to 2021
+# Removing 2012 transactions, possible mistakes but not addressable to 2012
 transaction.df <- transaction.df %>% 
   filter(year(TransactionDate) != 2012)
 ```
@@ -397,7 +396,7 @@ summary(transaction.promotion.df)
 ```
 
 Such function will be used lately for splitting in different years the data set. This
-will be useful also for the 3rd task, which regards creating a machine learning algorithm,
+will be useful for the 3rd task, which regards creating a machine learning algorithm,
 for training and testing purposes.
 ```{r Creating splitting function specifically for transaction.df}
 
@@ -423,8 +422,7 @@ head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"),
                                        sep = ","))
 ```
 # Merging data sets
-Note: Due to the immense data frame size, we are forced to work piecewise, otherwise
-our machines will not able to function well. Moreover, since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
+Note: Since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
 scrutinized timespan
 
 ```{r Date as.Date}
@@ -434,211 +432,27 @@ promotion.df <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct
 
 ```
 
-Now we will split the data frame transaction into 2020, 2021, and 2022
-```{r Splitting transaction.df in years}
-        
-# For transactions
-transactions2020 <- splitting_years(transaction.df, "2020-01-01", "2020-12-31")
-transactions2021 <- splitting_years(transaction.df, "2021-01-01", "2021-12-31")
-transactions2022 <- splitting_years(transaction.df, "2022-01-01", "2022-12-31")
-```
-
-__________________________________________________________________________-
-# Transactions2020
-
-Now it is possible to merge the subsets
-```{r Merging 2020 transactions with all information}
-# CPI
-transactions2020 <- left_join(transactions2020, 
-                              cpi.df,
-                              by = c("TransactionDate" = "Date_daily"))
-
-# Store
-transactions2020 <- left_join(transactions2020,
-                              store.df,
-                              by = "StoreKey")
-
-# Product
-transactions2020 <- left_join(transactions2020,
-                              product.df,
-                              by = "ProductKey")
-
-# Promotion Key
-transactions2020 <- left_join(transactions2020,
-                              transaction.promotion.df,
-                              by = c("TransactionDate", "StoreKey", "ProductKey"))
-
-# Promotion
-transactions2020 <- left_join(transactions2020,
-                              promotion.df,
-                              by = "PromotionKey")
-
-```
-
-## Exploration of missing values
-
-IMPORTANT PREMISE:
-The keys adjustments were done during the process of data transformation of the transaction.df, as a result the code that as a comment reported missing values should now report no missing values
-
-```{r Summary}
-summary(transactions2020)
-```
-
-```{r Missing distribution channels and store type}
-head(unique(transactions2020$StoreKey[which(is.na(transactions2020$StoreType))]), 20)
-```
-
-It appears that "transaction.df" needs a correction in the way data are expressed
-The same mistake is probably done also for "ProductKey"
-
-11138 missing BrandKey, SupplierKey, ProductCategory
-```{r Missing BrandKey}
-head(unique(transactions2020$ProductKey[which(is.na(transactions2020$BrandKey))]), 20)
-```
-
-Final missing values check
-```{r}
-any(is.na(transactions2020[,1:20]))
-```
-
-No missing values in the first 20 columns
-
-Now we have to check why we have a mismatch in PromotionKey. Apparently there are some promotions that have a key but no related information
-
-```{r}
-length(which(is.na(transactions2020$PromotionKey)))
-```
-
-2179539 transactions in 2020 were done without promotion
-
-Now we are looking for the number of transactions that do not have a PromoMechanic but actually have a PromotionKey
-
-```{r Number of no info promotion}
-length(which(is.na(transactions2020$PromoMechanic[which(!is.na(transactions2020$PromotionKey))]))) 
-```
-
-281583 transactions were done with a promotion but there are no information related
-
-```{r Further exploration of promotions missing values}
-noinfo_promo <- transactions2020 %>% 
-  filter(!is.na(PromotionKey)) %>% 
-  filter(is.na(PromoMechanic)) %>% 
-  select(ProductKey, PromotionKey, PromoMechanic, TransactionDate)
-
-# Check the mismatch
-mismatch <- left_join(promotion.df, 
-                      noinfo_promo,
-                      by = "PromotionKey")
-
-any(!is.na(mismatch$ProductKey)) # No match detected 
-
-remove(noinfo_promo, mismatch)
-```
-
-Why some promotions don't have the correspondent information? What can we do about them?
-
-________________________________________________________________________________
-# Transactions2021
-
-Now it is possible to merge the subsets
-```{r Merging 2021 transactions with all information}
-# CPI
-transactions2021 <- left_join(transactions2021, 
-                              cpi.df,
-                              by = c("TransactionDate" = "Date_daily"))
-
-# Store
-transactions2021 <- left_join(transactions2021,
-                              store.df,
-                              by = "StoreKey")
-
-# Product
-transactions2021 <- left_join(transactions2021,
-                              product.df,
-                              by = "ProductKey")
-
-# Promotion Key
-transactions2021 <- left_join(transactions2021,
-                              transaction.promotion.df,
-                              by = c("TransactionDate", "StoreKey", "ProductKey"))
-
-# Promotion
-transactions2021 <- left_join(transactions2021,
-                              promotion.df,
-                              by = "PromotionKey")
-
-```
-
-```{r}
-summary(transactions2021)
-```
-
-__________________________________________________________________________-
-# Transactions2022
-
-Now it is possible to merge the subsets
-```{r Merging 2022 transactions with all information}
-# CPI
-transactions2022 <- left_join(transactions2022, 
-                              cpi.df,
-                              by = c("TransactionDate" = "Date_daily"))
-
-# Store
-transactions2022 <- left_join(transactions2022,
-                              store.df,
-                              by = "StoreKey")
-
-# Product
-transactions2022 <- left_join(transactions2022,
-                              product.df,
-                              by = "ProductKey")
-
-# Promotion Key
-transactions2022 <- left_join(transactions2022,
-                              transaction.promotion.df,
-                              by = c("TransactionDate", "StoreKey", "ProductKey"))
-
-# Promotion
-transactions2022 <- left_join(transactions2022,
-                              promotion.df,
-                              by = "PromotionKey")
-
-```
-
-```{r}
-summary(transactions2022)
-```
-
-We are unable to detect duplicate transactions since there is not a unique key for each transaction. Duplicates might be related to the same type of transaction occurred on the same day.
-
-```{r Checking duplicate observation}
-# Computationally expensive (it takes a long time to process)
-trans.duplicates <- rbind(duplicated(transactions2020),
-                          duplicated(transactions2021),
-                          duplicated(transactions2022))
-```
-
-# Saving datasets
-```{r}
-save(transactions2020, file = "transactions2020.RData")
-save(transactions2021, file = "transactions2021.RData")
-save(transactions2022, file = "transactions2022.RData")
-
-```
-
-_________________________________________________________
 # Creating Dataset for next tasks and the Interactive Dashboard
 ```{r Merged Data set}
 # Trial 
 a <- merge(transaction.df, store.df)
 b <- merge(a, product.df)
 c <- left_join(b, transaction.promotion.df, by =  c("TransactionDate", "StoreKey", "ProductKey"))
-transaction.df <- left_join(c, promotion.df, by = "PromotionKey")
+transaction.df <- left_join(c, promotion.df, by = "PromotionKey") 
+transaction.df <- transaction.df %>% 
+  filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 
 save(transaction.df, file = paste0(path,"MergedData.RData"))
 ```
 
-```{r Interactive Dashboard}
+## Exploration of missing values
+
+```{r Summary}
+summary(transaction.df)
+```
+
+```{r Interactive Dashboard Data set}
+
 sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType) %>% 
   filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = "")) %>% 
