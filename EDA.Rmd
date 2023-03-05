@@ -220,12 +220,16 @@ dist.channel.sag <- df %>%
 ```{r Preparing the dataset}
 ggplot(data = dist.channel.sag, aes(x = TransactionDate, y = cum_rev,
                                     fill = DistributionChannel)) +
-  labs(fill = "Product Category\nLvl. 2", 
+  labs(fill = "Distribution channel", 
        x = "Transaction Date",y = "Cumulative revenues" ) +
   geom_area(color = "black", linewidth = 0.2, alpha = 0.6)
 ```
 
 Online distribution channel is a very narrow revenues source with low growth
+
+```{r Online Sales Share}
+sum(dist.channel.sag$ActualSales[year(dist.channel.sag$TransactionDate) == 2022 & dist.channel.sag$DistributionChannel == "Online"]) / sum(dist.channel.sag$ActualSales[year(dist.channel.sag$TransactionDate) == 2022]) 
+```
 
 
 # Regional distribution
