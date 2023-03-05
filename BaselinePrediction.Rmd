@@ -212,4 +212,12 @@ ggplot(data = baseline,
   xlab("Date") +
   theme(legend.title = element_blank())
 ```
+```{r}
+dataset$TotVolumes <- df$TotVolumes
+lm  <- lm(data = df, log(TotVolumes) ~ CPI_daily + Trend + I(Trend^2) + Festivity + PromoFlag)
+
+summary(lm)
+head(exp(lm$fitted.values))
+plot(lm$fitted.values)
+```
 
