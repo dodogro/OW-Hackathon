@@ -202,6 +202,16 @@ ggplot(data = transactions.sag, aes(x = TransactionDate, y = cum_rev,
 
 AD products are irrelevant when compared to other categories, AE shows a really slow growth, while AA, AB, AC are the best categories in terms of volumes and growth.
 
+```{r}
+cat.performances <- transactions.sag %>% 
+  group_by(ProductCategory_Lvl2, Year = year(TransactionDate)) %>% 
+  summarise(total.sales = sum(ActualSales)) %>% 
+  arrange(Year)
+
+sum(cat.performances$total.sales[cat.performances$Year == 2022 & (cat.performances$ProductCategory_Lvl2 == "AA" | cat.performances$ProductCategory_Lvl2 == "AB" | cat.performances$ProductCategory_Lvl2 == "AC")]) / sum(cat.performances$total.sales[cat.performances$Year == 2022])
+```
+
+
 # Distribution channels
 
 ```{r Preparing the dataset}
@@ -361,5 +371,79 @@ ggplot(data = topN.products, aes(x = factor(ProductKey, levels = ProductKey), y 
 ```
 
 
+# Product deep dive
+```{r Deep dive}
+################################################
+# Select product key to explore
+product.code <- 49329
 
+# Select starting date
+starting.date <- "2020-01-01"
+# Select ending date
+ending.date <- "2022-12-31"
+
+################################################
+
+# Select the timeframe of analysis
+time.interval <- interval(as.POSIXct(starting.date, # Starting date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))),
+                          as.POSIXct(ending.date, # Ending date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))))
+
+# Preparing the full dataset of transactions
+product.deep.dive.df <- df %>% 
+  filter(TransactionDate %within% time.interval & 
+           ProductKey == as.character(product.code))
+
+# Comparing the sales volumes of the product to those of the category
+sales.volumes.product <- product.deep.dive.df %>% 
+  group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
+  arrange(Month, Year) %>% 
+  summarise(Volumes = sum(UnitVolume),
+            ActualSales = sum(ActualSales),
+            SalesDiscount = sum(SalesDiscount)) %>% 
+  ungroup() %>% 
+  mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
+  arrange(Month) %>% 
+  arrange(Year) %>% 
+  mutate(SalesDeviation = (ActualSales-mean(ActualSales))/sd(ActualSales))
+
+sales.volumes.category <- df %>% 
+  filter(TransactionDate %within% time.interval & 
+           ProductCategory_Lvl2 == unique(ProductCategory_Lvl2[ProductKey == product.code])) %>% 
+  group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
+  arrange(Month, Year) %>% 
+  summarise(Volumes = sum(UnitVolume),
+            ActualSales = sum(ActualSales),
+            SalesDiscount = sum(SalesDiscount)) %>% 
+  ungroup() %>% 
+  mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
+  arrange(Month) %>% 
+  arrange(Year) %>% 
+  mutate(SalesDeviation = (ActualSales-mean(ActualSales))/sd(ActualSales))
+  
+deep.dive.final <- left_join(sales.volumes.product, sales.volumes.category, by = "TransactionPeriod") 
+
+
+# Plotting sales
+ggplot(data = deep.dive.final, aes(x = factor(TransactionPeriod, levels = TransactionPeriod),
+                                         y = SalesDeviation.x,
+                                         group = 1)) +
+  geom_line(aes(y = SalesDeviation.x), colour = "red") +
+  geom_line(aes(y = SalesDeviation.y), colour = "blue") +
+  geom_point() +
+  labs(title = paste("Product code:", as.character(product.code), "Category:",
+                      unique(df$ProductCategory_Lvl2[df$ProductKey == product.code]), sep = " "),
+       x = "Transaction Period",
+       y = "Sales Variation") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) 
+
+
+# Summary statistics: Frequency of distribution channel
+print("Transaction frequency:")
+table(product.deep.dive.df$DistributionChannel)
+
+```
 

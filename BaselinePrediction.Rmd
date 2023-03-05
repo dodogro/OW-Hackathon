@@ -59,6 +59,7 @@ obtain 1096 days in whihc some have to be considered as promotion and will have 
 
 ```{r Creating the dataset for the model}
 # Filtering by ProductKey
+# Note: The analysis will be performed fro productKey = 49340. For the rest a function will be used
 product.code.filter <- c("49340")
 
 sales <- transaction.df %>% 
@@ -82,6 +83,7 @@ df$SumDiscounts[which(is.na(df$SumDiscounts))] <- 0
 df$TotSales[which(is.na(df$SumFullPrices))] <- 0
 df$TotVolumes[which(is.na(df$TotVolumes))] <- 0
 df$Trend <- 1:length(df$TotVolumes)
+df$PromoFlag <- as.factor(df$PromoFlag)
 
 # Check for missing values
 summary(df) # No missing values
@@ -137,7 +139,8 @@ table(df$Festivity)
 ```{r Completed Data set for Baseline Predction and related Plot}
 View(df)
 ```
-```{r}
+
+```{r Plot}
 ggplot(data = df,
        aes(x = Date, y = TotVolumes, group = ProductKey,
                                 colour = factor(ProductKey))) +
@@ -165,14 +168,7 @@ baseline_Auto_SARIMAX = auto.arima(as.vector(df[,"TotVolumes"]), # specify main 
                               trace = TRUE,
                               seasonal = TRUE, # allow a SARIMAX model
                               stepwise = TRUE,
-                              approximation = FALSE) #The result suggests an ARIMA(5,0,2) but we are not fully satisfied with it given the graphs plotted above. 
-
-summary(baseline_Sarimax<- Arima(as.vector(df[,"TotVolumes"]), 
-                         order=c(2,1,2), 
-                         seasonal=c(1,0,0),
-                         xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]))
-        ) # This model will be preferred despite the slightly higher loglik due to the parsimonay principle
-
+                              approximation = FALSE) 
 
 ```
 ```{r Testing}
@@ -244,7 +240,81 @@ ggplot(data = baseline,
 Actual <- df %>% filter(Date %in% dates_elasticity) %>%  select(TotVolumes) 
 Base <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(Forecasts) 
 Uplift <- Actual - Base
+Discount <- df %>% filter(Date %in% dates_elasticity) %>% select(SumDiscounts)
+Elasticity <- -Uplift/Discount
+
+```
+
+```{r Elasticity Function}
+elasticity <- function(Product) {
+
+sales <- transaction.df %>% 
+  select(ProductKey, TransactionDate, UnitVolume, ActualSales, SalesDiscount,
+         RetailFullPrice, DistributionChannel) %>% 
+  filter(DistributionChannel == "Physical" &
+           ProductKey %in% Product) %>% 
+  group_by(ProductKey, TransactionDate) %>% 
+  summarise(SumDiscounts = sum(SalesDiscount),
+            TotSales = sum(RetailFullPrice),
+            TotVolumes = sum(UnitVolume)) %>% 
+  mutate(PromoFlag = case_when((abs(SumDiscounts)/TotSales) > 0.05 ~ 1,
+                               TRUE ~ 0),
+         Date = TransactionDate) %>% 
+  ungroup()
+
+df <- left_join(Date, sales, by = c("Date" = "TransactionDate"))
+df$ProductKey <- droplevels(df$ProductKey)
+df$ProductKey[which(is.na(df$ProductKey))] <- product.code.filter
+df$SumDiscounts[which(is.na(df$SumDiscounts))] <- 0
+df$TotSales[which(is.na(df$SumFullPrices))] <- 0
+df$TotVolumes[which(is.na(df$TotVolumes))] <- 0
+df$Trend <- 1:length(df$TotVolumes)
+
+df <- left_join(df, holidays.df, by = "Date")
+df <- df %>% 
+  mutate(Festivity = case_when(is.na(Festivity) ~ 0,
+                   TRUE ~ 1))
+df$Festivity <- as.factor(df$Festivity)
+baseline_Sarimax<- Arima(as.vector(df[,"TotVolumes"]), 
+                         order=c(2,1,2), 
+                         seasonal=c(1,0,0),
+                         xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]))
+dataset <- df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]
+dataset$PromoFlag <- rep(0, length(dataset$PromoFlag))
+dataset$PromoFlag <- as.factor(dataset$PromoFlag)
+
+## produce forecasts
+myforecasts <- forecast::forecast(baseline_Sarimax, xreg=data.matrix(dataset))
+baseline <- as.data.frame(cbind(myforecasts$fitted, as.character(Date$Date)))
+colnames(baseline) <- c("Forecasts", "Date")
+baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
+                                tz = time_at_tz(Sys.timezone(location = TRUE)))
+baseline$Forecasts <- as.numeric(baseline$Forecasts)
+baseline$TrueValues <- df$TotVolumes
+
+# Calculating elasticity
+dates_elasticity <- df$Date[which(df$PromoFlag == 1)] 
+Actual <- df %>% filter(Date %in% dates_elasticity) %>%  select(TotVolumes) 
+Base <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(Forecasts) 
+Uplift <- Actual - Base
+Discount <- df %>% filter(Date %in% dates_elasticity) %>% select(SumDiscounts)
+Elasticity <- -Uplift/Discount
+Dataset <- as.data.frame(cbind(Elasticity, dates_elasticity))
+colnames(Dataset) <- c("Elasticity", "Date")
+return(Dataset)
+}
 
 
+```
+
+```{r For each product}
+# The products
+# 49340, 49341, 49333 and 49329
+Elasticity49340 <- elasticity("49340")
+Elasticity49341 <- elasticity("49341") 
+Elasticity49333 <- elasticity("49333") 
+Elasticity49329 <- elasticity("49329") # This returns error because according to our calculations based on the definitions given to us, no promotions have been performed !
+
+# Note: Ignore the error that is returned by the function!
 ```
 
