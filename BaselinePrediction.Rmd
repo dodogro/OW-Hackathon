@@ -14,7 +14,8 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr, 
-               ggplot2, ggrepel, tidyverse, ggcharts, car, forecast)
+               ggplot2, ggrepel, tidyverse, ggcharts, car, forecast, scales, tidyquant, 
+               gridExtra, tibbletime, itsmr, here, fpp2, tseries)
 
 # Removing scientific notation
 
@@ -40,7 +41,8 @@ cpi.df$Date_daily <- as.POSIXct(cpi.df$Date_daily,
 
 cpi.df<- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
 ```
-
+Note one thing from this plot: 4 Products are displayed where two, namely 49329 and 49333 have been bought
+every single day throughout the 3 years. On the other hand 49340, has been bought 1039 (57 days without have been purchased) and 49341 "just" 896 times. In these cases we will have to force such dates with "0" volumes sold. 
 ```{r Creating Prediction Dataset}
 Date <-as.data.frame(cpi.df[,3:4]) # Required to be sure to have all the dates in the following data set
 colnames(Date) <- c("Date", "CPI_daily")
@@ -53,13 +55,13 @@ Date$WeekendFlag <- factor(Date$WeekendFlag, levels = c("TRUE", "FALSE"))
 
 ```{r Creating the dataset for the model}
 # Filtering by ProductKey
-product.code.filter <- "49340"
+product.code.filter <- c("49340")
 
 sales <- transaction.df %>% 
   select(ProductKey, TransactionDate, UnitVolume, ActualSales, SalesDiscount,
          RetailFullPrice, DistributionChannel) %>% 
   filter(DistributionChannel == "Physical" &
-           ProductKey == product.code.filter) %>% 
+           ProductKey %in% product.code.filter) %>% 
   mutate(PromoFlag = case_when((abs(SalesDiscount)/RetailFullPrice) > 0.05 ~ 1,
                                TRUE ~ 0)) %>% 
   filter(PromoFlag == 0) %>% 
@@ -77,7 +79,7 @@ df$SumFullPrices[which(is.na(df$SumFullPrices))] <- 0
 df$TotVolumes[which(is.na(df$TotVolumes))] <- 0
 
 # Check for missing values
-summary(df)
+summary(df) # No missing values
 ```
 
 
@@ -120,26 +122,15 @@ df <- left_join(df, holidays.df, by = "Date")
 df <- df %>% 
   mutate(Festivity = case_when(is.na(Festivity) ~ 0,
                    TRUE ~ 1))
+df$Festivity <- as.factor(df$Festivity)
 
 # Checking
 table(df$Festivity)
 ```
 
 ```{r Completed Data set for Baseline Predction and related Plot}
-summary(df)
 View(df)
-
-ggplot(data = df, aes(x = Date, y = TotVolumes, group = ProductKey,
-                      colour = factor(ProductKey))) +
-  geom_line(linetype = "solid") +
-  #geom_point() +
-  ylab("TotVolumes") +
-  xlab("Date") +
-  theme(legend.title = element_blank())
-
 ```
-Note one thing from this plot: 4 Products are displayed where two, namely 49329 and 49333 have been bought
-every single day throughout the 3 years. On the other hand 49340, has been bought 1039 (57 days without have been purchased) and 49341 "just" 896 times. In these cases we will have to force such dates with "0" volumes sold. 
 ```{r}
 ggplot(data = df,
        aes(x = Date, y = TotVolumes, group = ProductKey,
@@ -152,9 +143,51 @@ ggplot(data = df,
   theme(legend.title = element_blank())
 ```
 It looks like our time series is highly autocorrelated. Is it stationary though? 
-Neither PACF nor ACF help us in finding an answer to such question. How to deal with it?
+According to what the ACF displays, it seems the process is non-stationary. We will deal with it with differentiation hoping it will resolve the problem
+
 ```{r ACF}
-ggAcf(df$TotVolumes, lag.max = 52)
+ggAcf(df$TotVolumes, lag.max = 104)
 ggPacf(df$TotVolumes)
+```
+```{r SARIMAX}
+baseline_SARIMAX = auto.arima(as.vector(df[,"TotVolumes"]), # specify main trend
+                              xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag", "Festivity")]), # specify exogenous variables here
+                              trace = TRUE,
+                              seasonal= TRUE, # allow a SARIMAX model
+                              stepwise=FALSE,
+                              approximation=FALSE)
+```
+```{r Testing}
+checkresiduals(baseline_SARIMAX)
+test(resid(baseline_SARIMAX))
+autoplot(baseline_SARIMAX)
+```
+
+```{r Forecasting}
+
+# split the data into train and test sets
+baseline_train <- df %>% filter(Date <= as.POSIXct("2022-06-01", format = "%Y-%m-%d",  
+                              tz = time_at_tz(Sys.timezone(location = TRUE))))
+                              
+baseline_test <- df %>% filter(Date > as.POSIXct("2022-06-01", format = "%Y-%m-%d",  
+                              tz = time_at_tz(Sys.timezone(location = TRUE))))
+
+# retrain model only on train data
+baseline_arimax = auto.arima(as.vector(baseline_train[,"TotVolumes"]), # specify main trend
+                              xreg = data.matrix(baseline_train[,c("CPI_daily",
+                                                                   "WeekendFlag",
+                                                                   "Festivity")]), # specify exogenous variables here
+                              trace = TRUE,
+                              seasonal= TRUE, # allow a SARIMAX model
+                              stepwise=FALSE,
+                              approximation=FALSE)
+
+## produce forecasts
+myforecasts <- forecast::forecast(baseline_arimax, xreg=data.matrix(baseline_test[,c("CPI_daily",
+                                                                   "WeekendFlag",
+                                                                   "Festivity")]),)
+
+## plot the forecasts
+autoplot(myforecasts) + autolayer(ts(df[,c("TotVolumes")]))
 ```
 
