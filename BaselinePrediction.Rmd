@@ -205,19 +205,46 @@ baseline$TrueValues <- df$TotVolumes
 ggplot(data = baseline,
        aes(x = Date, y = Forecasts)) +
   geom_line(linetype = "solid", color = "blue") +
-  geom_line(aes(x = Date, y = TrueValues), color = "red") +
+  geom_line(aes(x = Date, y = TrueValues), color = "red", alpha = 0.7) +
   #geom_point() +
   geom_hline(yintercept = mean(baseline$Forecasts)) +
   ylab("TotVolumes") +
   xlab("Date") +
   theme(legend.title = element_blank())
 ```
-```{r}
+```{r Linear Model ? }
 dataset$TotVolumes <- df$TotVolumes
 lm  <- lm(data = df, log(TotVolumes) ~ CPI_daily + Trend + I(Trend^2) + Festivity + PromoFlag)
 
 summary(lm)
 head(exp(lm$fitted.values))
-plot(lm$fitted.values)
+
+baseline <- as.data.frame(cbind(exp(lm$fitted.values), as.character(Date$Date)))
+colnames(baseline) <- c("Forecasts", "Date")
+baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
+                                tz = time_at_tz(Sys.timezone(location = TRUE)))
+baseline$Forecasts <- as.numeric(baseline$Forecasts)
+baseline$TrueValues <- df$TotVolumes
+
+## plot the forecasts
+
+ggplot(data = baseline,
+       aes(x = Date, y = Forecasts)) +
+  geom_line(linetype = "solid", color = "blue") +
+  geom_line(aes(x = Date, y = TrueValues), color = "red", alpha = 0.7) +
+  #geom_point() +
+  geom_hline(yintercept = mean(baseline$Forecasts)) +
+  ylab("TotVolumes") +
+  xlab("Date") +
+  theme(legend.title = element_blank())
+```
+```{r Uplift}
+# Looking for the dates in which promotions have been activated
+(dates_elasticity <- df$Date[which(df$PromoFlag == 1)]) # Succession of days...interesting
+Actual <- df %>% filter(Date %in% dates_elasticity) %>%  select(TotVolumes) 
+Base <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(Forecasts) 
+Uplift <- Actual - Base
+
+
 ```
 
