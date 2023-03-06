@@ -111,7 +111,7 @@ table(df$WeekendFlag)
 
 # Stores overview
 
-```{r Preparing dataset}
+```{r Preparing dataset for the stores}
 # Select the year
 yr <- "2020"
 
@@ -192,7 +192,7 @@ transactions.sag <- df %>%
 
 ```
 
-```{r Preparing the dataset}
+```{r Plot}
 ggplot(data = transactions.sag, aes(x = TransactionDate, y = cum_rev,
                                     fill = ProductCategory_Lvl2)) +
   labs(fill = "Product Category\nLvl. 2", 
@@ -214,7 +214,7 @@ sum(cat.performances$total.sales[cat.performances$Year == 2022 & (cat.performanc
 
 # Distribution channels
 
-```{r Preparing the dataset}
+```{r Preparing the dataset for the distribution channel}
 # Select distribution channel
 dist.channel <- c("Physical", "Online")
 
@@ -225,9 +225,6 @@ dist.channel.sag <- df %>%
   arrange(TransactionDate) %>% 
   mutate(cum_rev = cumsum(ActualSales))
 
-```
-
-```{r Preparing the dataset}
 ggplot(data = dist.channel.sag, aes(x = TransactionDate, y = cum_rev,
                                     fill = DistributionChannel)) +
   labs(fill = "Distribution channel", 

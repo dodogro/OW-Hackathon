@@ -208,6 +208,7 @@ ggplot(data = baseline,
   xlab("Date") +
   theme(legend.title = element_blank())
 ```
+
 ```{r Linear Model ? }
 dataset$TotVolumes <- df$TotVolumes
 lm  <- lm(data = df, log(TotVolumes) ~ CPI_daily + Trend + I(Trend^2) + Festivity + PromoFlag)
@@ -234,6 +235,7 @@ ggplot(data = baseline,
   xlab("Date") +
   theme(legend.title = element_blank())
 ```
+
 ```{r Uplift}
 # Looking for the dates in which promotions have been activated
 (dates_elasticity <- df$Date[which(df$PromoFlag == 1)]) # Succession of days...interesting
