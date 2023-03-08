@@ -22,7 +22,7 @@ options(scipen=999)
 ```
 
 ___________________________________________________
-# DimProduct dataset
+# Product dataset
 
 Setting the working directory and importing the datasets
 ```{r Laoding Product.df}
@@ -54,12 +54,6 @@ product.df$ProductCategory_Lvl2 <- toupper(gsub("(\\w*\\s)", "",
 # in the vectors
 ```
 
-Transforming categories into factors
-```{r Factorization}
-product.df$ProductCategory_Lvl1 <- as.factor(product.df$ProductCategory_Lvl1)
-product.df$ProductCategory_Lvl2 <- as.factor(product.df$ProductCategory_Lvl2)
-```
-
 ____________________
 Quick exploration of categories
 ```{r Exploration}
@@ -87,9 +81,14 @@ ________________________________________________________________________________
 ```{r Loaging CPI.df} 
 head(cpi.df <- read_xlsx(paste0(path, "Consumer Price Index_vShared.xlsx")))
 ```
+
 Understanding type of variables
 ```{r Overview}
 str(cpi.df)
+```
+
+```{r NAs?}
+table(is.na(cpi.df)) # Yes, why? This is due to the first column, i.e. the monthyl cpi. 
 ```
 
 Setting up the date format for CPI
@@ -101,7 +100,6 @@ cpi.df$Date_daily <- as.POSIXct(cpi.df$Date_daily,
                                   Sys.timezone(location = TRUE)))
 ```
 
-
 ```{r Overview}
 summary(cpi.df)
 ```
@@ -112,14 +110,33 @@ any(duplicated(cpi.df))
 
 No duplicates in the dataset
 
-## Plotting average monthly CPI
-```{r}
-plot(unique(cpi.df$CPI_monthly),
+```{r CPI monthly}
+# Let's calculate the monthly CPI as the daily average instead of taking the first day-value as benchmark for the entire month
+
+cpi.monthly <- cpi.df %>% 
+  group_by(month(Date_daily), year(Date_daily)) %>% 
+  summarise(CPI_Monthly = mean(CPI_daily), 
+            Date_daily = paste0(year(Date_daily),"-",month(Date_daily), "-", day(Date_daily)))
+
+typeof(cpi.monthly$Date_daily) # Need to be converted
+cpi.monthly$Date_daily <- as.POSIXct(cpi.monthly$Date_daily, 
+                                format = "%Y-%m-%d",
+                                tz = time_at_tz(
+                                  Sys.timezone(location = TRUE)))
+
+cpi.df <- left_join(cpi.df, cpi.monthly, by = "Date_daily")
+cpi.df <- cpi.df[c( "Date_daily", "CPI_daily", "CPI_Monthly")]
+remove(cpi.monthly)
+
+```
+
+```{r Plotting average monthly CPI}
+plot(unique(cpi.df$CPI_Monthly),
      type = "l", xlab = "Month", ylab = "Average monthly CPI")
 ```
 
 
-___________________________________________________
+________________________________________________________________________________
 # Promotion dataset
 
 ```{r Laoding Promotion.df}
@@ -127,11 +144,8 @@ head(promotion.df <- read.table(paste0(path,"Hackathon_DimPromotion_SAN_vShared.
                                 header = TRUE,
                                 sep = ","))
 str(promotion.df)
-```
-
-Transforming PromotionKey into character (might be transformed into factor later)
-```{r Characterization}
-promotion.df$PromotionKey <- as.character(promotion.df$PromotionKey)
+summary(promotion.df)
+View(promotion.df)
 ```
 
 Transforming Promotion Dates into POSIXct formats
@@ -147,37 +161,50 @@ promotion.df$PromotionEndDate <- as.POSIXct(promotion.df$PromotionEndDate,
                                               Sys.timezone(location = TRUE)))
 ```
 
-Transforming promotion mechanics into factor
-```{r Factorization}
-table(promotion.df$PromoMechanic <- as.factor(promotion.df$PromoMechanic))
+```{r NAs ?}
+table(is.na(promotion.df)) # OK
 ```
-There are 15 promotion types + 1 unknown
 
-```{r Overview}
-summary(promotion.df)
-```
-No missing values
 
-```{r}
+```{r Checking Promotion duration}
 promotion.df <- promotion.df %>% 
-  mutate(duration = round(difftime(PromotionEndDate,
+  mutate(Duration = round(difftime(PromotionEndDate,
                                    PromotionStartDate,
                                    units = "days"),
                           digits = 0))
+tail(promotion.df[order(promotion.df$Duration),], 10)
 
 ```
+These are the promtions we would like to look for. Indeed, since being related to quite long periods
+we suppose these might be special promotions for employees. Despite this, we need to understand how many transactions have been made that are associated with these typologies of promotions. If few, we might also remove them from the data set. 
 
-```{r}
-plot(promo.avg.duration <- promotion.df %>% 
+374        342235  Buy $X for $Y         2021-08-16       2031-12-31  3789 days
+1516       328509 Percentage off         2018-12-05       2030-12-31  4409 days
+2602       269776  Buy $X for $Y         2021-08-10       2049-12-31 10370 days
+3043       279596  Buy $X for $Y         2021-08-01       2049-12-31 10379 days
+2170       298287        Unknown         2020-12-01       2049-12-31 10622 days
+2219       249104        Unknown         2020-09-11       2049-12-31 10703 days
+519        252190        Unknown         2020-02-04       2049-12-31 10923 days
+1832       323159        Unknown         2020-02-04       2049-12-31 10923 days
+
+```{r Average Promo Duration?}
+Promo.AVG.Duration <- promotion.df %>% 
   group_by(PromoMechanic) %>% 
-  summarise(avg.duration = mean(duration)), type = "b")
+  summarise(AVG.Duration = mean(Duration))
+
+ggplot(data=Promo.AVG.Duration, aes(x=PromoMechanic, y=AVG.Duration)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  geom_text(aes(label=round(AVG.Duration,3)), vjust=-0.3, size=3.5) +
+  theme_minimal()
+
+# A part from the "unknowns", the duration of the rest seems pretty aligned.  
 ```
 
 ```{r Unknown promotions}
 view(unknown.promotions <- promotion.df[promotion.df$PromoMechanic == "Unknown",])
 ```
 
-Some unknown promotions are set without ending date, as a default is equal to 2049-12-31
+Some unknown promotions are set without ending date, which as a default is equal to 2049-12-31
 
 ```{r Duplicates in promotion}
 any(duplicated(promotion.df))
@@ -186,7 +213,7 @@ No duplicates
 
 OK
 
-____________________________________________-
+________________________________________________________________________________
 # Store Dataset
 
 ```{r Loading Store.df}
@@ -198,44 +225,47 @@ head(store.df <- read.table(paste0(path,
 
 ```{r Overview}
 str(store.df)
+View(store.df)
 ```
 
-Adjusting StoreType and transforming it into factor
+```{r NAs?}
+table(is.na(store.df)) # No NAs
+```
+
 Note on RegEx: (\S+\s\S+) serves two take the first two words in the string, where \\S+ is the negation of \s, thus taking all the words excluding the space and \\s considers exactly the spaces. The combination takes thus exactly the first two words before a second space 
 
 ```{r Cleaning miswritten StoreType}
 store.df$StoreType <- gsub("(\\S+\\s\\S+)", "", store.df$StoreType)
-store.df$StoreType <- as.factor(store.df$StoreType)
 ```
 
-Adjusting Region_lvl 1 and 2 and transforming into factors
+Adjusting Region_lvl 1 and 2
 Note on RegEx: - [A-Z](?!.*[A-Z].* takes just the last capital letter
                - \\d+ is takes just the first group of number
 ```{r Cleaning miswritten Region_Lvl}
 store.df$Region_Lvl1 <- str_extract(store.df$Region_Lvl1, "[A-Z](?!.*[A-Z].*)")
 store.df$Region_Lvl2 <- str_extract(store.df$Region_Lvl2, "\\d+")
+# Note: The RegEx creates an NA which is due to the fact that line 75 has as Region_lvl 2 "unknown". We will still keep it since it might be relevant for transaction purposes. having said this, we will not be able to allocate it any region in particular. We will leave the "Unknown" 
 
-store.df$Region_Lvl1 <- as.factor(store.df$Region_Lvl1)
-store.df$Region_Lvl2 <- as.factor(store.df$Region_Lvl2)
+store.df$Region_Lvl2[which(is.na(store.df$Region_Lvl2))] <- "Unknown"
 ```
+
+StoreKey = 0 will be checked: If number of transactions is high, we will keep it. Otherwise, it will be removed for sake of clarity. 
 
 Final check
 ```{r Exploration}
 table(store.df$Region_Lvl1)
 as.data.frame(sort(table(store.df$Region_Lvl2), decreasing = T))
+store.df[which(store.df$StoreType == "Other"),]
 ```
+
+Interesting observation: Apart from one case, all the "Other" stores types are stemming from
+Region A, 30. The company might be interested in checking the reasons why the type of the stores is not well specified. 
+
 
 ```{r Check store key duplicates}
 # Check for duplicates
 any(duplicated(store.df))
 store.df <- distinct(store.df)
-```
-
-
-Transforming StoreKey and DistributionChannel into factors
-```{r Factorization of StoreKey and DistributionChannel}
-store.df$StoreKey <- as.factor(store.df$StoreKey)
-store.df$DistributionChannel <- as.factor(store.df$DistributionChannel)
 ```
 
 OK
@@ -252,7 +282,18 @@ head(transaction.df <- read.table(paste0(path,
 ```{r Overview}
 str(transaction.df)
 ```
+
+Trasforming TransactionDate into POSIXct format (it takes a while)
+```{r Dates as.Date}
+head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
+                                                  format = "%Y-%m-%d",
+                                                  tz = time_at_tz(
+                                                    Sys.timezone(location = TRUE))))
+
+```
+
 During the analysis we noticed a mismatch between transaction.df, store.df and product.df due to a mismatch in the expression of the keys, so we make a few adjustments before proceeding. 
+
 Note on RegEx: \\s* serves to match one or more blank spaces before and after the spcified string
                 _?  serves to look for possible underscore before the string and after the space
                 [kK][eE][yY] is the word to look for in every possible combination of upper and lower                 case
@@ -274,12 +315,21 @@ length(unique(product.df$ProductKey))
 length(unique(transaction.df$ProductKey))
 ```
 
-Not all StoreKey in the transactions dataset are present (724 against 299).
+Not all StoreKey in the transactions dataset are present (724 against 725).
 There is one ProductKey without a match (299 against 298)
 
 ```{r Check ProductKey}
-(missing.productkey <- transaction.df[!(transaction.df$ProductKey
-                                       %in% product.df$ProductKey),])
+summary((missing.productkey <- transaction.df[!(transaction.df$ProductKey
+                                       %in% product.df$ProductKey),]))
+```
+
+```{r Check StoreKey}
+summary((missing.storekey <- transaction.df[!(transaction.df$StoreKey
+                                       %in% store.df$StoreKey),]))
+```
+
+```{r NAs?}
+summary(transaction.df) # 23978 NA's
 ```
 
 There are 23978 registered transactions without information that need to be removed
@@ -289,41 +339,23 @@ transaction.df <- transaction.df[transaction.df$ProductKey != "",]
 remove(missing.productkey)
 ```
 
-
-Trasforming TransactionDate into POSIXct format (it takes a while)
-```{r Dates as.Date}
-head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
-                                                  format = "%Y-%m-%d",
-                                                  tz = time_at_tz(
-                                                    Sys.timezone(location = TRUE))))
-
-```
-
-Transforming DayOfWeek, WeekendFlag, StoreKey and ProductKey into factors
-```{r Factorization}
-transaction.df$DayOfWeek <- factor(transaction.df$DayOfWeek,
-                                   levels=c('Monday', 'Tuesday', 'Wednesday',
-                                            'Thursday', 'Friday', 'Saturday',
-                                            'Sunday'))
-transaction.df$WeekendFlag <- as.factor(transaction.df$WeekendFlag)
-transaction.df$StoreKey <- as.factor(transaction.df$StoreKey)
-transaction.df$ProductKey <- as.factor(transaction.df$ProductKey)
-```
-
 ```{r Overview}
 summary(transaction.df)
 ```
+
 ```{r 2012 transactions}
-unique(year(transaction.df$TransactionDate))
+unique(year(transaction.df$TransactionDate)) # 2012? Typo? Wanted to specidy 2021? We assume it is exactly like that! 
 
-transactions.2012 <- transaction.df %>% 
-  filter(year(TransactionDate) == 2012)
+transaction.df$TransactionDate <- gsub("2012", "2021", transaction.df$TransactionDate)
 
-# Removing 2012 transactions, possible mistakes but not addressable to 2012
-transaction.df <- transaction.df %>% 
-  filter(year(TransactionDate) != 2012)
+# Now we need to transform them back in dates
+transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
+                                                  format = "%Y-%m-%d",
+                                                  tz = time_at_tz(
+                                                    Sys.timezone(location = TRUE)))
+
+summary(transaction.df) # OK
 ```
-
 
 There are still 72125 missing values in ActualSales
 ```{r Testing 72125 missing values}
@@ -334,6 +366,7 @@ summary(test1)
 ```
 
 By comparing the two summaries we can see that the full dataset entails SalesDiscount both negative and positive while the subset of transactions where the "ActualSales" are missing has only negative discounts.
+
 -> We can derive: ActualSales = RetailFullPrice + (-SalesDiscount)
 since SalesDiscount for missing ActualSales has only negative values
 
@@ -353,6 +386,32 @@ No more missing values
 
 ```{r Removing Test}
 remove(test1)
+```
+
+```{r Outliers: UnitVolume}
+quantile(transaction.df$UnitVolume, probs = seq(0,1, 0.001))  
+head(transaction.df %>% arrange(desc(UnitVolume)), 20)
+
+# Since our final goal is to be able to predict the baseline, we believe that some specific behaviors, such as purchasing 4000 goods in one day, spending 58003.00  with 50% discount is not something usual. Likewise, we can say something similar with all the transactions that have either negative UnitVolumes or 0 (ca. 59.000). For the purpose of our analysis, thus, we will remove these data in order to have a data set that is REPRESENTATIVE OF REALITY. 
+
+transaction.df <- transaction.df[transaction.df$UnitVolume > 0 & transaction.df$UnitVolume <= 33,]
+summary(transaction.df)
+```
+
+```{r Outliers: Actual Sales}
+tail(quantile(transaction.df$ActualSales, probs = seq(0,1, 0.000001)),20) # 99999? Impossible.
+# Since we strongly believe that the jump between the 99.7% and 99.8% is too large (from 895 to 99999) we believe these data have been put manually. These will be removed. Moreover, following the same reasoning applied for UnitVolume, we have decided to remove negative values as well. Indeed, despite these could be rare cases of persons that have accumulated fidelty points, representing 0.1% of the populatin, we have opted to remove them. 
+
+transaction.df <- transaction.df[transaction.df$ActualSales > 0 & transaction.df$ActualSales < 99999 ,]
+summary(transaction.df)
+```
+
+```{r Outliers: Discount}
+tail(quantile(transaction.df$SalesDiscount, probs = seq(0,1, 0.00001)),20)
+table(transaction.df$SalesDiscount > 0) # 65 values larger than 0...What does it mean that the discount is positive? Since I bought something I will pay more? Difficult to believe. Moreover, since representing just 65 out 11 billion cases, we opt to remove them. 
+
+transaction.df <- transaction.df[transaction.df$Discounts <= 0]
+summary(transaction.df)
 ```
 
 OK
@@ -383,34 +442,8 @@ unique(transaction.promotion.df$StoreKey)
 transaction.promotion.df$StoreKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.promotion.df$StoreKey)
 ```
 
-Transforming StoreKey, ProductKey and Promotion Key into factors
-```{r Factorization}
-transaction.promotion.df$StoreKey <- as.factor(transaction.promotion.df$StoreKey)
-transaction.promotion.df$ProductKey <- as.factor(transaction.promotion.df$ProductKey)
-transaction.promotion.df$PromotionKey <-
-  as.factor(transaction.promotion.df$PromotionKey)
-```
-
 ```{r Overview}
 summary(transaction.promotion.df)
-```
-
-Such function will be used lately for splitting in different years the data set. This
-will be useful for the 3rd task, which regards creating a machine learning algorithm,
-for training and testing purposes.
-```{r Creating splitting function specifically for transaction.df}
-
-splitting_years <- function(transaction.df,start,end){
-        return(transaction.df[between(transaction.df$TransactionDate, 
-               as.POSIXct(start,
-                          format = "%Y-%m-%d",
-                          tz = time_at_tz(
-                            Sys.timezone(location = TRUE))), 
-               as.POSIXct(end,
-                          format = "%Y-%m-%d",
-                          tz = time_at_tz(
-                            Sys.timezone(location = TRUE)))),])
-  }
 ```
 
 _____________________________________
@@ -420,6 +453,40 @@ _____________________________________
 head(holiday.df <- read.table(paste0(path,"Hackathon_HolidaysMY_vShared.csv"), 
                                        header = TRUE,
                                        sep = ","))
+# Holidays
+# Data Frame Creation on the basis of holidays.df
+
+holidays <- stack(as.data.frame(cbind(rep("Chinese New Years Day",4),
+                                rep("Federal Territory Day",4),
+                                rep("Hari Raya Puasa (End of Ramadan)",4),
+                                rep("Labor Day",4),
+                                rep("Wesak Day (Buddhas Birthday), Kings Birthday",4),
+                                rep("Hari Raya Qurban (Feast of Sacrifice)",4),
+                                rep("Awal Muharram (Islamic New Year)",4),
+                                rep("Merdeka Day (National Day)",4),
+                                rep("Milad un Nabi (Birth of the Prophet Muhammad)",4),
+                                rep("Deepavali (Festival of Lights)",4),
+                                rep("Christmas Day",4))))
+
+Date_holidays <- stack(as.data.frame(cbind(c("2020-01-22", "2021-01-22", "2022-01-22", "2023-01-22"),
+                                  c("2020-02-01", "2021-02-01", "2022-02-01", "2023-02-01"),
+                                  c("2020-05-24", "2021-05-13", "2022-05-02", "2023-04-22"),
+                                  c("2020-05-01", "2021-05-01", "2022-05-01", "2023-05-01"),
+                                  c("2020-05-26", "2021-05-26", "2022-05-26", "2023-05-26"),
+                                  c("2020-06-31", "2021-07-20", "2022-07-10", "2023-06-29"),
+                                  c("2020-08-20", "2021-08-09", "2022-06-30", "2023-07-19"),
+                                  c("2020-08-31", "2021-08-31", "2022-08-31", "2023-08-31"),
+                                  c("2020-10-28", "2021-10-18", "2022-10-07", "2023-09-26"),
+                                  c("2020-11-14", "2021-11-04", "2022-10-24", "2023-10-12"),
+                                  c("2020-12-25", "2021-12-25", "2022-12-25", "2023-12-25"))))
+
+holidays.df <- cbind(holidays, Date_holidays)[,-c(2,4)]
+colnames(holidays.df) <- c("Festivity", "Date")
+
+holidays.df$Date<- as.POSIXct(holidays.df$Date, format = "%Y-%m-%d",  
+                              tz = time_at_tz(Sys.timezone(location = TRUE)))
+
+save(holidays.df, file = paste0(path,"holidays.df.RData"))
 ```
 # Merging data sets
 Note: Since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
@@ -444,7 +511,6 @@ transaction.df <- transaction.df %>%
 
 save(transaction.df, file = paste0(path,"MergedData.RData"))
 ```
-
 ## Exploration of missing values
 
 ```{r Summary}

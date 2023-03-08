@@ -2,11 +2,11 @@
 
 The following text serves to the purpose of guiding intuitively the viewer throughout our codes and analyses. Moreover, it is highly recommended to follow the prescribed order to have a flawlessly running code. 
 
-- The first file named "Data Cleaning" has been designed in order to address all the problems related to misspelled data entries, peculiar numbers, errors, outliers, etc. In few words, it has to be ran as FIRST SCRIPT so as to have for the following analyses the proper, cleaned, data. The script is subdivided into "chunks" each of them commented thoroghly to make the viewer understand what our thoughts have been and the assumptions that have been made. 
+- The first file named "Data Cleaning" has been designed in order to address all the problems related to misspelled data entries, peculiar numbers, errors, outliers, etc. In few words, it has to be ran as FIRST SCRIPT so as to have for the following analyses the proper, cleaned, data. The script is subdivided into "chunks" each of them commented thoroughly to make the viewer understand what our thoughts have been and the assumptions that have been made. 
 
-- The second notebook, EDA ("Exploratory Data Analysis") has been designed to answer to the first two tasks related to the explorative part of the data set. 
+- The second notebook, EDA ("Exploratory Data Analysis") has been designed to answer to the first two tasks related to the exploratory part of the data set. 
 
-- Strictly connected to the previous script, we have prepared an ad-hoc script "Summary Statistics" which, as the name suggest, serves to prpose of collecting in few codes-lines the requested statistics. 
+- Strictly connected to the previous script, we have prepared an ad-hoc script "Summary Statistics" which, as the name suggest, serves to the purpose of collecting in few codes-lines the requested statistics. 
 
 - The third script, "Baseline Prediction" is where the forecasting task has been performed. 
 

@@ -92,39 +92,7 @@ table(df$PromoFlag)
 
 
 ```{r Adding Exogenous factors}
-
-# Holidays
-# Data Frame Creation on the basis of holidays.df
-
-holidays <- stack(as.data.frame(cbind(rep("Chinese New Years Day",4),
-                                rep("Federal Territory Day",4),
-                                rep("Hari Raya Puasa (End of Ramadan)",4),
-                                rep("Labor Day",4),
-                                rep("Wesak Day (Buddhas Birthday), Kings Birthday",4),
-                                rep("Hari Raya Qurban (Feast of Sacrifice)",4),
-                                rep("Awal Muharram (Islamic New Year)",4),
-                                rep("Merdeka Day (National Day)",4),
-                                rep("Milad un Nabi (Birth of the Prophet Muhammad)",4),
-                                rep("Deepavali (Festival of Lights)",4),
-                                rep("Christmas Day",4))))
-
-Date_holidays <- stack(as.data.frame(cbind(c("2020-01-22", "2021-01-22", "2022-01-22", "2023-01-22"),
-                                  c("2020-02-01", "2021-02-01", "2022-02-01", "2023-02-01"),
-                                  c("2020-05-24", "2021-05-13", "2022-05-02", "2023-04-22"),
-                                  c("2020-05-01", "2021-05-01", "2022-05-01", "2023-05-01"),
-                                  c("2020-05-26", "2021-05-26", "2022-05-26", "2023-05-26"),
-                                  c("2020-06-31", "2021-07-20", "2022-07-10", "2023-06-29"),
-                                  c("2020-08-20", "2021-08-09", "2022-06-30", "2023-07-19"),
-                                  c("2020-08-31", "2021-08-31", "2022-08-31", "2023-08-31"),
-                                  c("2020-10-28", "2021-10-18", "2022-10-07", "2023-09-26"),
-                                  c("2020-11-14", "2021-11-04", "2022-10-24", "2023-10-12"),
-                                  c("2020-12-25", "2021-12-25", "2022-12-25", "2023-12-25"))))
-
-holidays.df <- cbind(holidays, Date_holidays)[,-c(2,4)]
-colnames(holidays.df) <- c("Festivity", "Date")
-
-holidays.df$Date<- as.POSIXct(holidays.df$Date, format = "%Y-%m-%d",  
-                              tz = time_at_tz(Sys.timezone(location = TRUE)))
+load(paste0(path, "holidays.df.RData"))
 
 df <- left_join(df, holidays.df, by = "Date")
 df <- df %>% 
