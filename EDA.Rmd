@@ -473,4 +473,50 @@ ggplot(BP, aes(x=Importance, y=Frequency,
 
 # Comment: More suppliers are involved in for both a considerable provision in terms of quantity of  goods sold and of value. This should theoretically mean that the company has a good bargaining power. What about those 3 suppliers that provide a number of goods' sold lower than 12? Are their products of low quality? 
 ```
+```{r Sales and Discounts}
+
+SD <- df %>% 
+  group_by(week(TransactionDate)) %>% 
+  summarise(Daily_Mean = mean(ActualSales),
+                Daily_Sum = sum(ActualSales),
+                Daily_Discount = -sum(SalesDiscount),
+                Volumes = sum(UnitVolume))
+SD$ChangeInDiscount <- c(diff(SD$Daily_Discount),0)
+SD$ChangeInSales<- c(diff(SD$Daily_Sum), 0)
+
+colnames(SD)[1] <- "TransactionDate" 
+
+
+ggplot(SD, aes(x = TransactionDate, y = Daily_Sum)) +
+            geom_line(color = "deepskyblue4") + 
+            geom_col(aes(x = TransactionDate, 
+                         y = Daily_Discount*(min(Daily_Sum)/max(Daily_Discount)))) +
+            scale_y_continuous(
+            # Features of the first axis
+            name = "AggregateSales",
+            # Add a second axis and specify its features
+            sec.axis = sec_axis(~.*min(SD$Daily_Sum)/max(SD$Daily_Discount), 
+            name="AggregateDiscount")) +
+            theme(# panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA))
+
+
+# Comparison with Changes in Volumes and Discounts
+ggplot(SD, aes(x = TransactionDate, y = ChangeInSales)) +
+            geom_line(color = "deepskyblue4") + 
+            geom_col(aes(x = TransactionDate, 
+                         y = ChangeInDiscount)) +
+            theme(# panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA))
+
+
+```
 
