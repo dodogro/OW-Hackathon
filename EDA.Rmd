@@ -504,7 +504,8 @@ ggplot(SD, aes(x = TransactionDate, y = Daily_Sum)) +
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA))
 
-
+```
+```{r Correlation(Change in Discounts and Sales)}
 # Comparison with Changes in Volumes and Discounts
 ggplot(SD, aes(x = TransactionDate, y = ChangeInSales)) +
             geom_line(color = "deepskyblue4") + 
@@ -517,6 +518,40 @@ ggplot(SD, aes(x = TransactionDate, y = ChangeInSales)) +
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA))
 
+cor(SD$ChangeInDiscount, SD$ChangeInSales)
+
+ggplot(SD, aes(x=ChangeInDiscount, y=ChangeInSales)) +
+  geom_point() + 
+  theme_minimal() + 
+  theme(legend.position = "none") + 
+  geom_smooth(method=lm,  linetype="dashed",
+             color="darkblue", fill="lightblue")
+
+summary(lm(ChangeInSales ~ ChangeInDiscount, data = SD))
+
+```
+```{r Is Inflation Relevant?}
+# De-trending Sales
+df.full <- left_join(df, holidays.df, by = "TransactionDate")
+df.full <- left_join(df.full, cpi.df, by = "TransactionDate")
+
+DTS <- df.full %>% 
+  group_by(TransactionDate, DistributionChannel, WeekendFlag, Festivity, CPI_daily) %>% 
+  summarise(Sales = sum(ActualSales),
+            Discounts = sum(SalesDiscount)) %>% 
+  mutate(DetrendedSales = Sales/CPI_daily) %>% 
+  mutate(FestivityFlag = case_when(is.na(Festivity) ~ 0,
+                                   TRUE ~ 1))
+
+DTS$Trend <- seq(1,length(DTS$TransactionDate), 1)
+
+# Is there a trend? 
+
+summary(lm <- lm(Sales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical",]))
+
+# Cool Plot Missing...
+
+summary(lmD <- lm(DetrendedSales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical",])) # Slight smaller t-value w.r.t trend but always extremely significant...What does this means? That CPI explains slighly the trend but it is definetely what drives the upwards patter .
 
 ```
 

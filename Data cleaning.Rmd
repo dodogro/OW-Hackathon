@@ -470,9 +470,9 @@ Date_holidays <- stack(as.data.frame(cbind(c("2020-01-22", "2021-01-22", "2022-0
                                   c("2020-12-25", "2021-12-25", "2022-12-25", "2023-12-25"))))
 
 holidays.df <- cbind(holidays, Date_holidays)[,-c(2,4)]
-colnames(holidays.df) <- c("Festivity", "Date")
+colnames(holidays.df) <- c("Festivity", "TransactionDate")
 
-holidays.df$Date<- as.POSIXct(holidays.df$Date, format = "%Y-%m-%d",  
+holidays.df$TransactionDate<- as.POSIXct(holidays.df$TransactionDate, format = "%Y-%m-%d",  
                               tz = time_at_tz(Sys.timezone(location = TRUE)))
 
 save(holidays.df, file = paste0(path,"holidays.df.RData"))
@@ -499,6 +499,10 @@ transaction.df$ProductKey <- as.factor(transaction.df$ProductKey) # For merge
 a <- left_join(transaction.df, store.df, by = "StoreKey", multiple = "all")
 b <- left_join(a, product.df, by = "ProductKey")
 c <- left_join(b, transaction.promotion.df, by =  c("TransactionDate", "StoreKey", "ProductKey"))
+d <- left_join(c, holidays.df, by = "TransactionDate")
+
+colnames(cpi.df)[1] <- "TransactionDate" # For merge
+e <- left_join(d, cpi.df, by = "TransactionDate")
 transaction.df <- left_join(c, promotion.df, by = "PromotionKey") 
 
 save(transaction.df, file = paste0(path,"MergedData.RData"))
