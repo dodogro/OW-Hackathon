@@ -176,7 +176,7 @@ tail(promotion.df[order(promotion.df$Duration),], 10)
 
 ```
 These are the promtions we would like to look for. Indeed, since being related to quite long periods
-we suppose these might be special promotions for employees. Despite this, we need to understand how many transactions have been made that are associated with these typologies of promotions. If few, we might also remove them from the data set. 
+we suppose these might be special promotions for employees. Despite this, we need to understand how many transactions have been made that are associated with these typologies of promotions. If few, we might also remove them from the data set. Note that this analysis has been performed at the end of this script since it requires the merge with other datasets. 
 
 374        342235  Buy $X for $Y         2021-08-16       2031-12-31  3789 days
 1516       328509 Percentage off         2018-12-05       2030-12-31  4409 days
@@ -283,9 +283,10 @@ head(transaction.df <- read.table(paste0(path,
 str(transaction.df)
 ```
 
-Trasforming TransactionDate into POSIXct format (it takes a while)
+Trasforming TransactionDate into POSIXct format (it takes a while). We directly substitute 2012 with 2021 since we have noticed this possible typo. 
 ```{r Dates as.Date}
-head(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
+transaction.df$TransactionDate <- gsub("2012", "2021", transaction.df$TransactionDate)
+summary(transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
                                                   format = "%Y-%m-%d",
                                                   tz = time_at_tz(
                                                     Sys.timezone(location = TRUE))))
@@ -343,20 +344,6 @@ remove(missing.productkey)
 summary(transaction.df)
 ```
 
-```{r 2012 transactions}
-unique(year(transaction.df$TransactionDate)) # 2012? Typo? Wanted to specidy 2021? We assume it is exactly like that! 
-
-transaction.df$TransactionDate <- gsub("2012", "2021", transaction.df$TransactionDate)
-
-# Now we need to transform them back in dates
-transaction.df$TransactionDate <- as.POSIXct(transaction.df$TransactionDate,
-                                                  format = "%Y-%m-%d",
-                                                  tz = time_at_tz(
-                                                    Sys.timezone(location = TRUE)))
-
-summary(transaction.df) # OK
-```
-
 There are still 72125 missing values in ActualSales
 ```{r Testing 72125 missing values}
 test1 <- transaction.df %>% 
@@ -402,15 +389,17 @@ summary(transaction.df)
 tail(quantile(transaction.df$ActualSales, probs = seq(0,1, 0.000001)),20) # 99999? Impossible.
 # Since we strongly believe that the jump between the 99.7% and 99.8% is too large (from 895 to 99999) we believe these data have been put manually. These will be removed. Moreover, following the same reasoning applied for UnitVolume, we have decided to remove negative values as well. Indeed, despite these could be rare cases of persons that have accumulated fidelty points, representing 0.1% of the populatin, we have opted to remove them. 
 
-transaction.df <- transaction.df[transaction.df$ActualSales > 0 & transaction.df$ActualSales < 99999 ,]
+transaction.df <- transaction.df[transaction.df$ActualSales > 0 
+                                 & transaction.df$ActualSales < 99999 ,]
 summary(transaction.df)
 ```
 
 ```{r Outliers: Discount}
-tail(quantile(transaction.df$SalesDiscount, probs = seq(0,1, 0.00001)),20)
-table(transaction.df$SalesDiscount > 0) # 65 values larger than 0...What does it mean that the discount is positive? Since I bought something I will pay more? Difficult to believe. Moreover, since representing just 65 out 11 billion cases, we opt to remove them. 
+tail(quantile(transaction.df$SalesDiscount, probs = seq(0,1, 0.0001)),20)
+head(quantile(transaction.df$SalesDiscount, probs = seq(0,1, 0.0001)),20)
+table(transaction.df$SalesDiscount > 0) # 65 values larger than 0...What does it mean that the discount is positive? Since I bought something I will pay more? Difficult to believe. Moreover, since representing just 65 out 11 billion cases, we opt to remove them. Furthermore, we decided to remove the first 0.01% since far away from the rest of the "normal" discounts 
 
-transaction.df <- transaction.df[transaction.df$Discounts <= 0]
+transaction.df <- transaction.df[transaction.df$SalesDiscount <= 0 & transaction.df$SalesDiscount > -500,]
 summary(transaction.df)
 ```
 
@@ -488,9 +477,8 @@ holidays.df$Date<- as.POSIXct(holidays.df$Date, format = "%Y-%m-%d",
 
 save(holidays.df, file = paste0(path,"holidays.df.RData"))
 ```
+
 # Merging data sets
-Note: Since the transactions go from 2020.01.01 to 2022.12.31, it has been decided to remove the dates that were present concerning dates not in the 
-scrutinized timespan
 
 ```{r Date as.Date}
 cpi.df<- cpi.df[between(cpi.df$Date_daily, as.POSIXct("2020-01-01"), as.POSIXct("2022-12-31")),]
@@ -502,12 +490,16 @@ promotion.df <- promotion.df[between(promotion.df$PromotionStartDate, as.POSIXct
 # Creating Dataset for next tasks and the Interactive Dashboard
 ```{r Merged Data set}
 # Trial 
-a <- merge(transaction.df, store.df)
-b <- merge(a, product.df)
+store.df$StoreKey <- as.factor(store.df$StoreKey) # For merge
+transaction.df$StoreKey <- as.factor(transaction.df$StoreKey) # For merge
+
+transaction.promotion.df$ProductKey <- as.factor(transaction.promotion.df$ProductKey) # For merge
+transaction.df$ProductKey <- as.factor(transaction.df$ProductKey) # For merge
+
+a <- left_join(transaction.df, store.df, by = "StoreKey", multiple = "all")
+b <- left_join(a, product.df, by = "ProductKey")
 c <- left_join(b, transaction.promotion.df, by =  c("TransactionDate", "StoreKey", "ProductKey"))
 transaction.df <- left_join(c, promotion.df, by = "PromotionKey") 
-transaction.df <- transaction.df %>% 
-  filter(TransactionDate >= as.POSIXct("2020-01-01",format = "%Y-%m-%d", tz = ""))
 
 save(transaction.df, file = paste0(path,"MergedData.RData"))
 ```
@@ -517,7 +509,23 @@ save(transaction.df, file = paste0(path,"MergedData.RData"))
 summary(transaction.df)
 ```
 
-```{r Interactive Dashboard Data set}
+```{r Checking the strange Promotion Behaviours}
+check <- transaction.df %>% 
+  filter(PromotionKey %in% c("342235", "328509", "269776", "298287", "249104", "252190", "323159", "279596")) %>% 
+  group_by(PromotionKey, PromoMechanic) %>% 
+  summarise(N.Transactions = n(), 
+            EndDate = unique(PromotionEndDate))
+
+check2 <- transaction.df %>% 
+  filter(PromoMechanic == "Unknown") %>%
+  group_by(Promo)
+  summarise(N.Transactions = n())
+
+# It appears that no transaction has been made with the majority of those product keys a part from "342235" and "328509". Since this is the case, after the datasets merge our data will not be "polluted" by such promotions. Thus, nothing shall be done. 
+  
+```
+
+```{r Interactive Dashboard Dataset}
 
 sales_volumes <- transaction.df %>% 
   select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType) %>% 

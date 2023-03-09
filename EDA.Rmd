@@ -3,18 +3,17 @@ title: "EDA"
 output: html_notebook
 ---
 
-```{r}
+```{r Packages Loading}
 pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
                lattice, gcookbook, tidyr, timechange)
 ```
 
-```{r}
+```{r Loading Dataset}
 path = "../Data-OW/"
 load(file = paste0(path,"MergedData.RData"))
 df <- transaction.df
 ```
 
-# Checking summaries
 ```{r Summary 2020}
 summary(df)
 ```
@@ -22,7 +21,7 @@ summary(df)
 # Check for drastic data changes
 We expect the same order of magnitude in the number of transaction recorded for each month during the three years. If that is not the case, probably there has been some mistakes in the data collection process.
 
-```{r}
+```{r Transaction Quantities}
 trans.number <- df %>% 
   group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
   summarise(trans.record = n()) %>% 
@@ -39,7 +38,7 @@ ggplot(data = trans.number, aes(x = Month, y = trans.record, group = Year,
 Huge decrease in April 2020 with 151128 transactions considered a mean equal to 313250.6 monthly transactions
 
 Going deep into April 2020
-```{r}
+```{r April deep dive}
 april2020 <-  df %>% 
   filter(year(TransactionDate) == 2020) %>% 
   filter(month(TransactionDate) == 4) %>% 
@@ -49,7 +48,7 @@ april2020 <-  df %>%
 view(april2020)
 ```
 
-There are no holes in data recordings apparently, just low values
+There are no "missing" data apparently, just low values.
 Filtering by month number it's possible to check how many stores made a sale during that particular month compared to the total number of stores that made at least one sale during 2020
 
 ```{r Number of stores that made a sale}
@@ -60,15 +59,11 @@ month2020.wide <- df %>%
 length(unique(month2020.wide$StoreKey))
 length(unique(df[year(df$TransactionDate) == 2020,]$StoreKey))
 ```
-In March (3) and May (5) 2020, respectively 555 and 550 stores made at least one sale, but in April just 513 stores made a sale during that period. Possible Covid-related issues, considering that during the year, the number of active stores (stores that made at least one sale during the year) were 601.
-
+In March (3) and May (5) 2020, 555 and 550 stores made at least one sale respectively. In April just 513 stores made a sale during that period. Possible Covid-related issues, considering that during the year, the number of active stores (stores that made at least one sale during the year) were 601.
 
 # Days of the week
 
 ```{r Checking relative frequencies}
-# Dropping unused level
-df$DayOfWeek <- droplevels(df$DayOfWeek)
-
 # Re-ordering levels
 
 df$DayOfWeek <- factor(df$DayOfWeek,
@@ -101,8 +96,6 @@ ggplot(dayoftheweek.plot, aes(x = Day, y = rel.frequency, fill = Year)) +
 ```
 
 Transaction more or less disstributed throughout the week with a peak from Friday to Sunday
-
-
 
 ## Weekend Flag
 ```{r WeekendFlag}
@@ -442,5 +435,42 @@ ggplot(data = deep.dive.final, aes(x = factor(TransactionPeriod, levels = Transa
 print("Transaction frequency:")
 table(product.deep.dive.df$DistributionChannel)
 
+```
+
+```{r Brands}
+df$BrandKey <- as.factor(df$BrandKey)
+length(unique(df$BrandKey))
+
+brand <- df %>% 
+  select(ActualSales, BrandKey) %>%  
+  group_by(BrandKey) %>% 
+  summarize(BrandImportance = sum(ActualSales))
+
+ggplot(data=brand, aes(x=BrandKey, y=BrandImportance)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  geom_text(aes(label=round(BrandImportance/sum(BrandImportance),3), vjust=-0.3)) +
+  theme_minimal()
+  
+```
+```{r Upstream Bargaining Power?}
+df$SupplierKey <- as.factor(df$SupplierKey)
+length(unique(df$SupplierKey))
+
+BP <- df %>% 
+  group_by(SupplierKey) %>% 
+  summarise(Frequency = n(),
+            Importance = sum(ActualSales),
+            Differentiation = length(unique(ProductKey)))
+
+ggplot(BP, aes(x=Importance, y=Frequency, 
+               color=Differentiation, size=Importance)) +
+  geom_point() + 
+  geom_text(aes(label=SupplierKey, 
+            check_overlap = TRUE, 
+            vjust = "inward", hjust = "inward")) + 
+  theme_minimal() + 
+  theme(legend.position = "none")
+
+# Comment: More suppliers are involved in for both a considerable provision in terms of quantity of  goods sold and of value. This should theoretically mean that the company has a good bargaining power. What about those 3 suppliers that provide a number of goods' sold lower than 12? Are their products of low quality? 
 ```
 
