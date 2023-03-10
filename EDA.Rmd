@@ -5,7 +5,9 @@ output: html_notebook
 
 ```{r Packages Loading}
 pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
-               lattice, gcookbook, tidyr, timechange)
+               lattice, gcookbook, tidyr, timechange, ggstream)
+
+options(scipen=999)
 ```
 
 ```{r Loading Dataset}
@@ -439,7 +441,7 @@ table(product.deep.dive.df$DistributionChannel)
 
 ```{r Brands}
 df$BrandKey <- as.factor(df$BrandKey)
-length(unique(df$BrandKey))
+print(paste("There are", length(unique(df$BrandKey)), "unique brand keys in the dataset", sep = " "))
 
 brand <- df %>% 
   select(ActualSales, BrandKey) %>%  
@@ -452,6 +454,9 @@ ggplot(data=brand, aes(x=BrandKey, y=BrandImportance)) +
   theme_minimal()
   
 ```
+BrandKey 3521 makes almost all the sales (96)
+
+
 ```{r Upstream Bargaining Power?}
 df$SupplierKey <- as.factor(df$SupplierKey)
 length(unique(df$SupplierKey))
@@ -552,6 +557,72 @@ summary(lm <- lm(Sales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical"
 # Cool Plot Missing...
 
 summary(lmD <- lm(DetrendedSales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical",])) # Slight smaller t-value w.r.t trend but always extremely significant...What does this means? That CPI explains slighly the trend but it is definetely what drives the upwards patter .
+
+```
+
+
+```{r Exploring sales and discount for single product}
+################################################
+# Select product key to explore
+product.code <- c(49333, 49341)
+
+# Select starting date
+starting.date <- "2021-01-01"
+# Select ending date
+ending.date <- "2022-12-31"
+
+################################################
+
+# Select the timeframe of analysis
+time.interval <- interval(as.POSIXct(starting.date, # Starting date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))),
+                          as.POSIXct(ending.date, # Ending date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))))
+
+# Preparing the full dataset of transactions
+product.sales.discounts <- transaction.df %>% 
+  filter(TransactionDate %within% time.interval & 
+           ProductKey %in% as.character(product.code)) %>% 
+  group_by(Year = year(TransactionDate), Week = week(TransactionDate)) %>% 
+  summarise(ActualSales = sum(ActualSales), 
+            TotalDiscounts = sum(SalesDiscount)) %>% 
+  arrange(Week) %>% 
+  arrange(Year) %>% 
+  mutate(Period = paste(Year, Week, sep = "-")) %>% 
+  ungroup()
+
+product.sales <- product.sales.discounts %>% 
+  select(Value = ActualSales, Period, Week, Year) %>% 
+  mutate(flag = replicate(nrow(product.sales.discounts),"ActualSales"))
+  
+
+product.discounts <- product.sales.discounts %>% 
+  select(Value = TotalDiscounts, Period, Week, Year) %>% 
+  mutate(flag = replicate(nrow(product.sales.discounts),"Discounts"))
+
+product.sales.discounts.final = rbind(product.sales, product.discounts)
+
+product.sales.discounts.final <- product.sales.discounts.final %>% 
+  group_by(Year, Week) %>% 
+  arrange(Week) %>% 
+  arrange(Year)
+
+product.sales.discounts.final$Value[product.sales.discounts.final$flag == "Discounts"] <- -product.sales.discounts.final$Value[product.sales.discounts.final$flag == "Discounts"]
+
+product.sales.discounts.final$Value <- round(product.sales.discounts.final$Value, digits = 0)
+
+
+ggplot(product.sales.discounts.final, aes(fill=flag,
+                                          y=Value,
+                                          x=factor(Period, levels = unique(Period)))) + 
+  geom_bar(position="stack", stat="identity") + 
+  scale_fill_viridis(discrete=TRUE, name="") +
+  ylab("Sales Value") + 
+  xlab("Year - Week") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
 
 ```
 
