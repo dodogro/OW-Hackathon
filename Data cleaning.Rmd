@@ -133,6 +133,8 @@ remove(cpi.monthly)
 ```{r Plotting average monthly CPI}
 plot(unique(cpi.df$CPI_Monthly),
      type = "l", xlab = "Month", ylab = "Average monthly CPI")
+
+
 ```
 
 

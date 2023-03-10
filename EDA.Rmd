@@ -479,14 +479,41 @@ ggplot(BP, aes(x=Importance, y=Frequency,
 # Comment: More suppliers are involved in for both a considerable provision in terms of quantity of  goods sold and of value. This should theoretically mean that the company has a good bargaining power. What about those 3 suppliers that provide a number of goods' sold lower than 12? Are their products of low quality? 
 ```
 
-```{r Sales and Discounts}
+```{r Sales and Discounts: CHECKAAAA}
 
 SD <- transaction.df %>% 
-  group_by(week(TransactionDate)) %>% 
+  group_by(month(TransactionDate), year(TransactionDate)) %>% 
   summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
                 Daily_Discount = -sum(SalesDiscount),
                 Volumes = sum(UnitVolume))
+
+plot(myts <- ts(SD$Daily_Sum, start=c(2020, 1), end=c(2022, 12), frequency=12)) 
+plot(decomposition <- stl(myts, s.window = "periodic"))
+
+hW <- HoltWinters(myts)
+cor(decomposition$time.series[,3], SD$Daily_Discount)
+
+plot(mytsDi <- ts(SD$Daily_Discount, start=c(2020, 1), end=c(2022, 12), frequency=12)) 
+plot(decompositionD <- stl(mytsDi, s.window = "periodic"))
+
+comparison <- as.data.frame(cbind(decomposition$time.series[,1],decompositionD$time.series[,1], seq(1,length(decomposition$time.series[,1]),1)))
+colnames(comparison) <- c("S", "D", "T")
+
+cpi <- cpi.df %>% 
+  filter(year(Date_daily) > 2019) %>% 
+  group_by(M = month(Date_daily), Y = year(Date_daily)) %>% 
+  summarise(Month = mean(CPI_Monthly)) %>% 
+  arrange(Y,M)
+
+myCPI <- ts(cpi$Month, start=c(2020, 1), end=c(2022, 12), frequency=12)
+plot(decoCPI <- stl(myCPI, s.window = "periodic"))
+
+
+ggplot(comparison, aes(x = T, y = scale(S))) +
+  geom_line() +
+  geom_line(aes(y = scale(D), colour = "blue")) 
+
 SD$ChangeInDiscount <- c(diff(SD$Daily_Discount),0)
 SD$ChangeInSales<- c(diff(SD$Daily_Sum), 0)
 
