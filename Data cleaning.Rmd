@@ -503,7 +503,7 @@ d <- left_join(c, holidays.df, by = "TransactionDate")
 
 colnames(cpi.df)[1] <- "TransactionDate" # For merge
 e <- left_join(d, cpi.df, by = "TransactionDate")
-transaction.df <- left_join(c, promotion.df, by = "PromotionKey") 
+transaction.df <- left_join(e, promotion.df, by = "PromotionKey") 
 
 save(transaction.df, file = paste0(path,"MergedData.RData"))
 ```
@@ -522,7 +522,7 @@ check <- transaction.df %>%
 
 check2 <- transaction.df %>% 
   filter(PromoMechanic == "Unknown") %>%
-  group_by(Promo)
+  group_by(PromotionKey) %>% 
   summarise(N.Transactions = n())
 
 # It appears that no transaction has been made with the majority of those product keys a part from "342235" and "328509". Since this is the case, after the datasets merge our data will not be "polluted" by such promotions. Thus, nothing shall be done. 

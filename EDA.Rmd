@@ -478,9 +478,10 @@ ggplot(BP, aes(x=Importance, y=Frequency,
 
 # Comment: More suppliers are involved in for both a considerable provision in terms of quantity of  goods sold and of value. This should theoretically mean that the company has a good bargaining power. What about those 3 suppliers that provide a number of goods' sold lower than 12? Are their products of low quality? 
 ```
+
 ```{r Sales and Discounts}
 
-SD <- df %>% 
+SD <- transaction.df %>% 
   group_by(week(TransactionDate)) %>% 
   summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
@@ -532,31 +533,31 @@ ggplot(SD, aes(x=ChangeInDiscount, y=ChangeInSales)) +
   geom_smooth(method=lm,  linetype="dashed",
              color="darkblue", fill="lightblue")
 
-summary(lm(ChangeInSales ~ ChangeInDiscount, data = SD))
+summary(lm1 <- lm(ChangeInSales ~ ChangeInDiscount, data = SD))
+plot(rstandard(lm1))
 
 ```
+
 ```{r Is Inflation Relevant?}
 # De-trending Sales
-df.full <- left_join(df, holidays.df, by = "TransactionDate")
-df.full <- left_join(df.full, cpi.df, by = "TransactionDate")
 
-DTS <- df.full %>% 
-  group_by(TransactionDate, DistributionChannel, WeekendFlag, Festivity, CPI_daily) %>% 
+DTS <- transaction.df %>% 
+  group_by(TransactionDate, WeekendFlag, Festivity, CPI_daily) %>% 
   summarise(Sales = sum(ActualSales),
             Discounts = sum(SalesDiscount)) %>% 
-  mutate(DetrendedSales = Sales/CPI_daily) %>% 
+  mutate(DeflatedSales = Sales/CPI_daily) %>% 
   mutate(FestivityFlag = case_when(is.na(Festivity) ~ 0,
                                    TRUE ~ 1))
 
 DTS$Trend <- seq(1,length(DTS$TransactionDate), 1)
 
-# Is there a trend? 
-
-summary(lm <- lm(Sales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical",]))
-
+# Is there a trend?
+summary(lm <- lm(Sales ~ Trend, data = DTS))
 # Cool Plot Missing...
 
-summary(lmD <- lm(DetrendedSales ~ Trend, data = DTS[DTS$DistributionChannel == "Physical",])) # Slight smaller t-value w.r.t trend but always extremely significant...What does this means? That CPI explains slighly the trend but it is definetely what drives the upwards patter .
+summary(lmD <- lm(DeflatedSales ~ Trend, data = DTS)) # Slight smaller t-value w.r.t trend but always extremely significant...What does this means? That CPI explains slightly the trend but it is definetely what drives the upwards patter .
+
+
 
 ```
 
