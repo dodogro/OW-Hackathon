@@ -5,7 +5,7 @@ output: html_notebook
 
 ```{r Packages Loading}
 pacman::p_load(ggplot2, tidyverse, lubridate, packcircles, viridis, ggiraph,
-               lattice, gcookbook, tidyr, timechange, ggstream, plyr)
+               lattice, gcookbook, tidyr, timechange, ggstream, dplyr)
 
 options(scipen=999)
 ```
@@ -14,6 +14,7 @@ options(scipen=999)
 path = "../Data-OW/"
 load(file = paste0(path,"MergedData.RData"))
 df <- transaction.df
+remove(transaction.df)
 ```
 
 ```{r Summary 2020}
@@ -45,7 +46,7 @@ april2020 <-  df %>%
   filter(year(TransactionDate) == 2020) %>% 
   filter(month(TransactionDate) == 4) %>% 
   group_by(Day = day(TransactionDate)) %>% 
-  summarise(trans.recorded = n())
+  dplyr::summarise(trans.recorded = n())
 
 view(april2020)
 ```
@@ -275,6 +276,53 @@ view(positive.discounts)
 
 71 observations with positive discounts, possibly due to errors or price corrections
 
+```{r Unitary price}
+################################################
+# Select product key to explore
+product.code <- c(49340, 49341, 49333, 49329)
+
+# Select starting date
+starting.date <- "2020-01-01"
+# Select ending date
+ending.date <- "2022-12-31"
+
+################################################
+
+# Select the timeframe of analysis
+time.interval <- interval(as.POSIXct(starting.date, # Starting date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))),
+                          as.POSIXct(ending.date, # Ending date
+                                     format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))))
+
+
+price <- df %>% 
+  select(TransactionDate, ProductCategory_Lvl2, ProductKey, RetailFullPrice, UnitVolume, CPI_Monthly) %>%
+  filter(TransactionDate %within% time.interval) %>% 
+  group_by(Year = year(TransactionDate), Month = month(TransactionDate), ProductCategory_Lvl2, ProductKey) %>% 
+  summarise(price = sum(RetailFullPrice)/sum(UnitVolume), 
+            CPI_Monthly = unique(CPI_Monthly)) %>% 
+  ungroup() %>% 
+  group_by(Year, Month, ProductCategory_Lvl2) %>% 
+  mutate(category.price = mean(price)) %>% 
+  arrange(Month) %>% 
+  arrange(Year) %>% 
+  filter(ProductKey %in% product.code) %>% 
+  mutate(Period = paste(Year, Month, sep ="-"))
+
+ggplot(data = price, aes(x = factor(Period, levels = unique(Period)), y = price, group = ProductKey)) +
+  geom_line(aes(color = ProductKey)) +
+  geom_line(data = price, aes(y = CPI_Monthly), colour = "red") + 
+  geom_line(data = price, aes(y = category.price, group = ProductCategory_Lvl2, colour = ProductCategory_Lvl2)) +
+  ylab("Price") + 
+  xlab("Period") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.8, hjust=0.5))
+
+```
+
+
+
 
 ```{r Unitary price distribution}
 outliers.actualsales <- df %>% 
@@ -481,7 +529,7 @@ ggplot(BP, aes(x=Importance, y=Frequency,
 
 ```{r Sales and Discounts}
 
-SD <- transaction.df %>% 
+SD <- df %>% 
   group_by(week(TransactionDate), month(TransactionDate), year(TransactionDate)) %>% 
   summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
@@ -526,6 +574,7 @@ ggplot(SD, aes(x = TransactionDate, y = Daily_Sum)) +
                   plot.background = element_rect(fill=NA))
 
 ```
+
 ```{r Correlation(Change in Discounts and Sales)}
 # Comparison with Changes in Volumes and Discounts
 ggplot(SD, aes(x = TransactionDate, y = ChangeInSales)) +
@@ -641,6 +690,7 @@ ggplot(product.sales.discounts.final, aes(fill=flag,
 
 
 ```
+
 ```{r Holidays vs Normal days}
 # What we would like to see is if the promotions and sales have a different behavior (population) in holidays w.r.t. normal days. 
 
