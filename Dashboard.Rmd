@@ -12,7 +12,7 @@ path = "../Data-OW/"
 
 Importing libraries
 ```{r Importing Libraries and parameters setting}
-pacman::p_load(readxl,lubridate,dplyr,timechange,stringr,shinydashboard, 
+pacman::p_load(lubridate,dplyr,timechange,stringr,shinydashboard, 
                shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
                ggcharts, packcircles, viridis, ggiraph, lattice, gcookbook, 
                tidyr, timechange)
@@ -25,8 +25,17 @@ options(scipen=999)
 
 ```{r Loading the Pre-Processed Data}
 load(paste0(path,"DBData.RData"))
-str(df <- sales_volumes)
 ```
+
+```{r Preparation, aka Factorization}
+
+cols <- c("DistributionChannel", "ProductCategory_Lvl2", "StoreKey", "ProductKey", 
+          "PromoMechanic", "Region_Lvl1", "Region_Lvl2", "StoreType", "FestivityFlag")
+
+Sales[cols] <- lapply(Sales[cols], factor)
+Sales <- subset(Sales, select = -c(Festivity))
+```
+
 
 ```{r UI-Creation}
 
@@ -41,14 +50,14 @@ ui <- fluidPage(
                          label = "Date",
                   min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
                   max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
-                  value = c(min(sales_volumes$TransactionDate), 
-                            max(sales_volumes$TransactionDate)),
+                  value = c(min(Sales$TransactionDate), 
+                            max(Sales$TransactionDate)),
                   timeFormat="%Y-%m-%d",
                   timezone = "+0100"),
              
               pickerInput(inputId = "ProductID",
                          label = "ProductKey",
-                         choices = levels(sales_volumes$ProductKey),
+                         choices = levels(Sales$ProductKey),
                          options = list('actions-box' = TRUE,
                                         'liveSearch' = TRUE,
                                         'showTick' = TRUE),
@@ -62,7 +71,7 @@ ui <- fluidPage(
              
              pickerInput(inputId = "StoreID",
                          label = "StoreKey",
-                         choices = levels(sales_volumes$StoreKey),
+                         choices = levels(Sales$StoreKey),
                          options = list('actions-box' = TRUE,
                                         'liveSearch' = TRUE,
                                         'showTick' = TRUE),
@@ -72,13 +81,13 @@ ui <- fluidPage(
              
              checkboxGroupInput(inputId = "Category",
                          label = "Category",
-                         choices = levels(sales_volumes$ProductCategory_Lvl2),
+                         choices = levels(Sales$ProductCategory_Lvl2),
                          selected = "AC", 
                          inline = TRUE),
              
              pickerInput(inputId = "Promo",
                          label = "PromoMechanic",
-                         choices = levels(sales_volumes$PromoMechanic),
+                         choices = levels(Sales$PromoMechanic),
                          options = list('actions-box' = TRUE,
                                         'liveSearch' = TRUE,
                                         'showTick' = TRUE),
@@ -147,7 +156,7 @@ ui <- fluidPage(
 server <- function(input, output){
   
   datasetInput <- reactive({
-      df %>% 
+      Sales %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
       filter(StoreKey %in% input$StoreID) %>% 
@@ -161,7 +170,7 @@ server <- function(input, output){
     })
   
   datasetInput2 <- reactive({
-      df %>% 
+      Sales %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
       filter(DistributionChannel %in% input$Channel) %>% 
       filter(StoreKey %in% input$StoreID) %>% 
@@ -175,7 +184,7 @@ server <- function(input, output){
   })
   
   store.summary <- reactive({
-      df %>% 
+      Sales %>% 
       select(StoreKey, StoreType, Region_Lvl1, Region_Lvl2, ActualSales, TransactionDate, 
              DistributionChannel, ProductCategory_Lvl2, ProductKey) %>% 
       filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
@@ -193,7 +202,7 @@ server <- function(input, output){
   })
   
   transactions.sag <- reactive({
-    df %>% 
+    Sales %>% 
     filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
     filter(DistributionChannel %in% input$Channel) %>% 
     filter(StoreKey %in% input$StoreID) %>% 
@@ -204,7 +213,7 @@ server <- function(input, output){
   })
   
   pareto.analysis <- reactive({
-    df %>% 
+    Sales %>% 
     select(ProductKey, ProductCategory_Lvl2, ActualSales, TransactionDate, DistributionChannel, StoreKey) %>% 
     filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
     filter(DistributionChannel %in% input$Channel) %>% 
