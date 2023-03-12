@@ -14,7 +14,7 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(readxl,lubridate,dplyr,timechange,stringr, 
-               ggplot2, ggrepel, tidyverse, ggcharts)
+               ggplot2, ggrepel, tidyverse, ggcharts, tidyquant)
 
 # Removing scientific notation
 
@@ -25,7 +25,7 @@ ___________________________________________________
 # Product dataset
 
 Setting the working directory and importing the datasets
-```{r Laoding Product.df}
+```{r Loading Product.df}
 head(product.df <- read.csv(paste0(path,"Hackathon_DimProduct_SAN_vShared.csv"), 
                        header = TRUE), 5)
 str(product.df)
@@ -130,11 +130,20 @@ remove(cpi.monthly)
 
 ```
 
-```{r Plotting average monthly CPI}
-plot(unique(cpi.df$CPI_Monthly),
-     type = "l", xlab = "Month", ylab = "Average monthly CPI")
-
-
+```{r Plotting CPI}
+ggplot(data = cpi.df, aes(x = Date_daily, y = CPI_daily)) +
+  geom_line() +
+  geom_vline(xintercept = as.POSIXct("2020-01-01",format = "%Y-%m-%d",
+                                     tz = time_at_tz(Sys.timezone(location = TRUE))), 
+             colour = "blue") +
+  geom_smooth(method=lm, se=FALSE, col='green', size=0.5) +
+  labs(x = "Date", y = "CPI", title = "CPI index", subtitle = "2019 - 2022") +
+  xlab("Date") +
+  ylab("CPI") +
+  theme_minimal() +
+  theme(text = element_text(size = 20))
+  
+# Starting from the blue line we have also have data on transactions.
 ```
 
 
@@ -304,11 +313,6 @@ Note on RegEx: \\s* serves to match one or more blank spaces before and after th
 head(transaction.df$StoreKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.df$StoreKey), 10)
 head(transaction.df$ProductKey <- gsub("\\s*_?[kK][eE][yY]\\s*", "", transaction.df$ProductKey), 10)
 ```
-
-```{r Check for duplicates}
-# any(duplicated(transaction.df)) too long to compute (TRUE)
-```
-
 
 ```{r Checking if there is a match between keys}
 length(unique(store.df$StoreKey))
