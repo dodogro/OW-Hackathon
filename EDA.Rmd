@@ -35,7 +35,10 @@ ggplot(data = trans.number, aes(x = Month, y = trans.record, group = Year,
   geom_line() +
   geom_point() + 
   scale_x_discrete(limits = trans.number$Month) +
-  ylab("Number of transactions")
+  labs(x = "Month", y = "Number of transactions",
+       title = "Transaction number", subtitle = "2020 - 2022") +
+  theme_minimal() +
+  theme(text = element_text(size = 20))
 
 ```
 Huge decrease in April 2020 with 151128 transactions considered a mean equal to 313250.6 monthly transactions
