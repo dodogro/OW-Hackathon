@@ -39,6 +39,24 @@ Sales <- subset(Sales, select = -c(Festivity))
 ```{r UI-Creation}
 
 ui <- fluidPage(
+  tags$head(
+        tags$style(HTML("
+            code {
+                color: #00559F;
+                display:block;
+                padding:9.5px;
+                margin:0 0 12px;
+                margin-top:12px;
+                font-size:15px;
+                line-height:25px;
+                word-break:break-all;
+                word-wrap:break-word;
+                white-space:pre-wrap;
+                background-color:#F5F5F5;
+                border:1px solid rgba(0,0,0,0.15);
+                border-radius:6px; 
+                font-family:monospace;} 
+           "))),
   theme = shinytheme("flatly"),
   navbarPage( 
   title = "OW - Hackatow",
@@ -167,7 +185,7 @@ ui <- fluidPage(
              checkboxGroupInput(inputId = "Category2",
                          label = "Category",
                          choices = levels(Sales$ProductCategory_Lvl2),
-                         selected = "AC", 
+                         selected = levels(Sales$ProductCategory_Lvl2), 
                          inline = TRUE),
              
              numericInput(inputId = "TopN2",
@@ -184,9 +202,20 @@ ui <- fluidPage(
                                           valueBoxOutput(outputId = "TotalDiscount4"),
                                           valueBoxOutput(outputId = "Volumes4")
                                            ),
+                                 
                                  tabPanel(tags$p("HolidaysEffect"),
+                                          strong("Are Sales during holidays statistically different?"),
                                           plotOutput(outputId = "HolidaysEffect"),
-                                          valueBoxOutput(outputId = "Test"))
+                                          valueBoxOutput(outputId = "Test")
+                                          ),
+                                 
+                                 tabPanel(tags$p("CPIRelevance"),
+                                          code("Attention: Select just one single ProductKey,otherwise the plot will not work!"),
+                                          plotOutput(outputId = "CPI"),
+                                          valueBoxOutput(outputId = "PV"),
+                                          #br(),
+            code("The reported value explains whether the coefficient related to CPI is significant or not in explaining Sales'trend")
+                                          )
            )
           )
          )
@@ -237,7 +266,7 @@ server <- function(input, output){
       group_by(StoreKey, StoreType, Region_Lvl1, Region_Lvl2) %>% 
       summarise(revenues = sum(ActualSales)) %>% 
       mutate(txt = paste("Store: ",StoreKey, "\n",
-                         "Yearly sales: ", round(revenues/1000, digits = 0),"kMYR", "\n",
+                         "Yearly sales: ", round(revenues/1000, digits = 0),"k$", "\n",
                          "Region lvl.1: ", Region_Lvl1, "\n",
                          "Region lvl.2: ", Region_Lvl2)) %>% 
       arrange(desc(revenues)) %>% 
@@ -276,15 +305,35 @@ server <- function(input, output){
   })
   
   Distributions <- reactive({
-    Sales  %>% 
+    Sales %>% 
       filter(TransactionDate >= input$Time2[1] & TransactionDate <= input$Time2[2]) %>% 
       filter(DistributionChannel %in% input$Channel2) %>% 
       filter(ProductCategory_Lvl2 %in% input$Category2) %>% 
       filter(ProductKey %in% input$ProductID2) %>% 
-      group_by(TransactionDate, FestivityFlag, CPI_daily) %>% 
-      summarise(Sales = sum(ActualSales),
-                Discounts = sum(SalesDiscount)) 
+      group_by(TransactionDate, FestivityFlag) %>% 
+      summarise(Sales = sum(ActualSales)) 
   })
+  
+  Inflation <- reactive({
+    Sales %>% 
+      filter(ProductKey %in% input$ProductID2) %>% 
+      group_by(M = month(TransactionDate), Y = year(TransactionDate), CPI_Monthly) %>% 
+      summarise(Sales = sum(ActualSales)) %>% 
+      arrange(M) %>% 
+      arrange(Y) %>% 
+      mutate(Period = paste(Y, M, sep = "-"))
+  })
+    
+    Trend <- reactive({
+      data.frame(trend = as.numeric(stl(ts(Inflation()$Sales, 
+                                    start = c(2020,1), 
+                                    end = c(2022, 12), 
+                                    frequency = 12), 
+                                 s.window = "periodic")$time.series[,2]),
+                    CPI_M = as.numeric(Inflation()$CPI_Monthly), 
+                    Period = as.factor(Inflation()$Period))
+    })
+ 
   
   # BarPlot
   output$PromotionMechanism <- renderPlot({
@@ -306,7 +355,7 @@ server <- function(input, output){
   # Time Series
   output$SalesVolumes <- renderPlot({
     print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
-            geom_line(color = "deepskyblue4") + 
+            geom_line(color = "#00559F") + 
             geom_line(aes(x = TransactionDate, 
                           y = Daily_Discount*(max(Daily_Sum)/max(Daily_Discount))),
                       color = "yellow4") +
@@ -348,7 +397,7 @@ server <- function(input, output){
     output[[paste0("TotalDiscount", nr)]] <- renderValueBox({
     valueBox(
     subtitle = sum(datasetInput()$Daily_Discount),
-    value = "TotDiscount (MYR)",
+    value = "TotDiscount ($)",
     width = 4,
     color = "navy")})      
   })
@@ -357,7 +406,7 @@ server <- function(input, output){
     output[[paste0("TotalSales", nr)]] <- renderValueBox({
     valueBox(
     subtitle = sum(datasetInput()$Daily_Sum),
-    value = "TotSales (MYR)",
+    value = "TotSales ($)",
     width = 4,
     color = "navy")})      
   })
@@ -402,7 +451,7 @@ server <- function(input, output){
   output$ParetoAnalysis <- renderPlot({
     print(ggplot(data = topN.products(), aes(x = factor(ProductKey, levels = ProductKey), y = per.revenues)) +
     geom_bar(stat = "identity", aes(fill = topN.products()$tot.revenues, alpha = 0.6)) +
-    geom_hline(yintercept = 0.75, colour = "blue") +
+    geom_hline(yintercept = 0.75, colour = "#00559F") +
     geom_hline(yintercept = 0.90, colour = "red") +
     geom_point() +
     geom_path() +
@@ -426,14 +475,34 @@ server <- function(input, output){
              linetype="dashed") +
       theme(panel.background = element_rect(fill=NA),
             plot.background = element_rect(fill=NA),
-            legend.position =  'none',
-          axis.title.x = element_blank(),
-          axis.title.y = element_blank())
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank())
   })
   
   output$Test <- renderValueBox({
     valueBox(value = "P-Value ",
              subtitle = t.test(Sales ~ FestivityFlag, data = Distributions())$p.value)
+  })
+  
+  output$CPI <- renderPlot({
+  ggplot(Trend(), aes(x = Period, group = 1)) +
+            geom_line(aes(y = scale(trend), colour = as.character(input$ProductID2))) + 
+            geom_line(aes(y = scale(CPI_M), colour = "CPI")) + 
+  scale_colour_manual("",
+                      breaks = c(as.character(input$ProductID2), "CPI"),
+                      values = c("#00559F", "green4")) +
+            theme(# panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA),
+                  axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+  })
+  
+  output$PV <- renderValueBox({
+    valueBox("P-Value", coefficients(summary(lm(trend ~ CPI_M, data = Trend())))[2,4],
+    color = "purple")
   })
   
 }

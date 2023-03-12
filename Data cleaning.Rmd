@@ -534,8 +534,8 @@ check2 <- transaction.df %>%
 ```{r Interactive Dashboard Dataset}
 
 Sales <- transaction.df %>% 
-  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType, CPI_daily, Festivity) %>% 
-  mutate(DeflatedSales = ActualSales/CPI_daily) %>% 
+  select(TransactionDate, ActualSales, DistributionChannel, SalesDiscount, ProductCategory_Lvl2, StoreKey, UnitVolume, ProductKey, PromoMechanic, Region_Lvl1, Region_Lvl2, StoreType, CPI_Monthly, CPI_daily, Festivity) %>% 
+  mutate(DeflatedSales = ActualSales/CPI_Monthly) %>% 
   mutate(FestivityFlag = case_when(is.na(Festivity) ~ 0,
                                    TRUE ~ 1))
 

@@ -618,36 +618,40 @@ plot(actualsales <- ts(DTS$Sales, start = c(2020,1), end = c(2022, 12), frequenc
 plot(timeAS <- stl(actualsales, s.window = "periodic"))
 trendAS <- timeAS$time.series[,2] # Trend
 
-Trend <- as.data.frame(cbind(trendAS, DTS$CPI_Monthly, DTS$Period))
-colnames(Trend) <- c("trend", "CPI_M", "Period")
-Trend$Period <- as.factor(Trend$Period)
-Trend$trend <- as.numeric(Trend$trend)
-Trend$CPI_M <- as.numeric(Trend$CPI_M)
+stl(ts(DTS$Sales, start = c(2020,1), end = c(2022, 12), frequency = 12), s.window = "periodic")$time.series[,2]
 
-print(myplot <- ggplot(Trend, aes(x = Period, y = scale(trend), group = 1)) +
-            geom_line(color = "deepskyblue1") + 
-            geom_line(aes(x = Period, 
-                          y = scale(CPI_M)),
-                      color = "green4")) + 
+Trend <- data.frame(trend = as.numeric(stl(ts(DTS$Sales, 
+                                    start = c(2020,1), 
+                                    end = c(2022, 12), 
+                                    frequency = 12), 
+                                 s.window = "periodic")$time.series[,2]),
+                    CPI_M = as.numeric(DTS$CPI_Monthly), 
+                    Period = as.factor(DTS$Period))
+
+
+print(myplot <- ggplot(Trend, aes(x = Period, group = 1)) +
+            geom_line(aes(y = scale(trend), colour = "Trend")) + 
+            geom_line(aes(y = scale(CPI_M), colour = "CPI")) + 
+  scale_colour_manual("",
+                      breaks = c("Trend", "CPI"),
+                      values = c("deepskyblue1", "green4")) +
             theme(# panel.grid.major = element_blank(),
                   # axis.line = element_line(colour = "black"),
                   axis.title.x = element_blank(),
                   axis.title.y = element_blank(),
                   panel.background = element_rect(fill=NA),
                   plot.background = element_rect(fill=NA),
-                  axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+                  axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)))
 
+geom_line(color = "deepskyblue1")
 # It looks like the sales' trend is very similar to CPI's one. Is the latter driving the former? Saying that there is causation is dangerous but if the coefficient in front of CPI is statistically significant, then we might assume that among possible other factors CPI is one of the possible Sales' trend's drivers. 
       
 # Is there a trend?
-summary(lmAS <- lm(trendAS ~ CPI_M, data = Trend))
+coefficients(summary(lmAS <- lm(trend ~ CPI_M, data = Trend)))[2,4]
 
 # It appears that CPI is extremely significant in explaining the Sales' TREND!
 
 ```
-
-```
-
 
 ```{r Exploring sales and discount for single product}
 ################################################
@@ -719,12 +723,8 @@ ggplot(product.sales.discounts.final, aes(fill=flag,
 # What we would like to see is if the promotions and sales have a different behavior (population) in holidays w.r.t. normal days. 
 
 HN <- Sales  %>% 
-  group_by(TransactionDate, WeekendFlag, Festivity, CPI_daily, FestivityFlag) %>% 
-  summarise(Sales = sum(ActualSales),
-            Discounts = sum(SalesDiscount)) %>% 
-  mutate(DeflatedSales = Sales/CPI_daily) %>% 
-  mutate(FestivityFlag = case_when(is.na(Festivity) ~ 0,
-                                   TRUE ~ 1))
+  group_by(TransactionDate, FestivityFlag) %>% 
+  summarise(Sales = sum(ActualSales))
 
 HN$FestivityFlag <- as.factor(HN$FestivityFlag)
 
