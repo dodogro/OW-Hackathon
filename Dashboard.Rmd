@@ -13,9 +13,8 @@ path = "../Data-OW/"
 Importing libraries
 ```{r Importing Libraries and parameters setting}
 pacman::p_load(lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2, shinythemes, ggrepel, tidyverse, shinyWidgets,
-               ggcharts, packcircles, viridis, ggiraph, lattice, gcookbook, 
-               tidyr, timechange)
+               shiny, ggplot2, shinythemes, ggrepel, shinyWidgets,
+               ggcharts, packcircles, viridis, ggiraph, gcookbook)
 
 # Removing scientific notation
 
@@ -130,25 +129,69 @@ ui <- fluidPage(
                        valueBoxOutput(outputId = "TotalDiscount3"),
                        valueBoxOutput(outputId = "Volumes3")
                        ),
-              
-              tabPanel(tags$p("Products' Growth"),
-                       plotOutput(outputId = "CategoryGrowth"),
-                       valueBoxOutput(outputId = "TotalSales4"),
-                       valueBoxOutput(outputId = "TotalDiscount4"),
-                       valueBoxOutput(outputId = "Volumes4")
-                       ),
-              
               tabPanel(tags$p("Category In-depth"),
                        plotOutput(outputId = "ParetoAnalysis"),
                        valueBoxOutput(outputId = "TotalSales5"),
                        valueBoxOutput(outputId = "TotalDiscount5"),
                        valueBoxOutput(outputId = "Volumes5")
-                       )
+                       ))
              )
+           ),
+  
+  tabPanel("In-depth Analysis",
+           sidebarPanel(tags$h3("Slicers"), # "h3" is the heading's size
+             sliderInput(inputId = "Time2", # Creating the slider on the side 
+                         label = "Date",
+                  min = as.POSIXct("2020-01-01", format = "%Y-%m-%d", tz = ""),
+                  max = as.POSIXct("2022-12-31", format = "%Y-%m-%d", tz = ""),
+                  value = c(min(Sales$TransactionDate), 
+                            max(Sales$TransactionDate)),
+                  timeFormat="%Y-%m-%d",
+                  timezone = "+0100"),
+             
+              pickerInput(inputId = "ProductID2",
+                         label = "ProductKey",
+                         choices = levels(Sales$ProductKey),
+                         options = list('actions-box' = TRUE,
+                                        'liveSearch' = TRUE,
+                                        'showTick' = TRUE),
+                         multiple = T,
+                         selected = c("49340")),
+             
+             checkboxGroupInput(inputId = "Channel2",
+                         label = "Channel",
+                         choices = c("Online", "Physical"),
+                         selected = c("Online", "Physical")),
+             
+             
+             checkboxGroupInput(inputId = "Category2",
+                         label = "Category",
+                         choices = levels(Sales$ProductCategory_Lvl2),
+                         selected = "AC", 
+                         inline = TRUE),
+             
+             numericInput(inputId = "TopN2",
+                          label = "Top-N-Pareto",
+                          value = 5, 
+                          max = 20,
+                          min = 3),
+             ),
+           
+           mainPanel(tabsetPanel(type = "tabs",
+                                 tabPanel(tags$p("Products' Growth"),
+                                          plotOutput(outputId = "CategoryGrowth"),
+                                          valueBoxOutput(outputId = "TotalSales4"),
+                                          valueBoxOutput(outputId = "TotalDiscount4"),
+                                          valueBoxOutput(outputId = "Volumes4")
+                                           ),
+                                 tabPanel(tags$p("HolidaysEffect"),
+                                          plotOutput(outputId = "HolidaysEffect"),
+                                          valueBoxOutput(outputId = "Test"))
            )
+          )
+         )
         )
-      )
-    )
+       )
     
 ```
 
@@ -203,10 +246,9 @@ server <- function(input, output){
   
   transactions.sag <- reactive({
     Sales %>% 
-    filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
-    filter(DistributionChannel %in% input$Channel) %>% 
-    filter(StoreKey %in% input$StoreID) %>% 
-    filter(ProductCategory_Lvl2 %in% input$Category) %>%
+    filter(TransactionDate >= input$Time2[1] & TransactionDate <= input$Time2[2]) %>% 
+    filter(DistributionChannel %in% input$Channel2) %>% 
+    filter(ProductCategory_Lvl2 %in% input$Category2) %>%
     group_by(ProductCategory_Lvl2) %>%  
     arrange(TransactionDate) %>% 
     mutate(cum_rev = cumsum(ActualSales))
@@ -214,7 +256,8 @@ server <- function(input, output){
   
   pareto.analysis <- reactive({
     Sales %>% 
-    select(ProductKey, ProductCategory_Lvl2, ActualSales, TransactionDate, DistributionChannel, StoreKey) %>% 
+    select(ProductKey, ProductCategory_Lvl2, 
+           ActualSales, TransactionDate, DistributionChannel, StoreKey) %>% 
     filter(TransactionDate >= input$Time[1] & TransactionDate <= input$Time[2]) %>% 
     filter(DistributionChannel %in% input$Channel) %>% 
     filter(StoreKey %in% input$StoreID) %>% 
@@ -230,6 +273,17 @@ server <- function(input, output){
   topN.products <- reactive({
     pareto.analysis() %>% 
       filter(ProductKey %in% pareto.analysis()$ProductKey[1:input$TopN])
+  })
+  
+  Distributions <- reactive({
+    Sales  %>% 
+      filter(TransactionDate >= input$Time2[1] & TransactionDate <= input$Time2[2]) %>% 
+      filter(DistributionChannel %in% input$Channel2) %>% 
+      filter(ProductCategory_Lvl2 %in% input$Category2) %>% 
+      filter(ProductKey %in% input$ProductID2) %>% 
+      group_by(TransactionDate, FestivityFlag, CPI_daily) %>% 
+      summarise(Sales = sum(ActualSales),
+                Discounts = sum(SalesDiscount)) 
   })
   
   # BarPlot
@@ -362,6 +416,26 @@ server <- function(input, output){
           axis.title.x = element_blank(),
           axis.title.y = element_blank()))
   })
+  
+  output$HolidaysEffect <- renderPlot({
+      ggplot(Distributions(), aes(x=Sales, fill=FestivityFlag)) +
+      geom_density(alpha=0.4) + 
+      geom_vline(data=plyr::ddply(Distributions(), "FestivityFlag", 
+                                  summarise, grp.mean=mean(Sales)), 
+             aes(xintercept=grp.mean, color=FestivityFlag),
+             linetype="dashed") +
+      theme(panel.background = element_rect(fill=NA),
+            plot.background = element_rect(fill=NA),
+            legend.position =  'none',
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank())
+  })
+  
+  output$Test <- renderValueBox({
+    valueBox(value = "P-Value ",
+             subtitle = t.test(Sales ~ FestivityFlag, data = Distributions())$p.value)
+  })
+  
 }
 
 ```
