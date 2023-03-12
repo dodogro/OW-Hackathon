@@ -131,27 +131,32 @@ ui <- fluidPage(
                                 #valueBoxOutput(outputId = "MeanSale"),
                                 valueBoxOutput(outputId = "TotalSales1"),
                                 valueBoxOutput(outputId = "TotalDiscount1"),
-                                valueBoxOutput(outputId = "Volumes1")
-                                ),
+                                valueBoxOutput(outputId = "Volumes1"),
+                                code("This graph serves to have a general overview of Sales and Disocunts behaviours")),
               
               tabPanel(tags$p("Volumes by PromoMechanic"),
+                       code("Which are the Promtion mostly used?"),
                        plotOutput(outputId = "PromotionMechanism"),
                        valueBoxOutput(outputId = "TotalSales2"),
                        valueBoxOutput(outputId = "TotalDiscount2"),
-                       valueBoxOutput(outputId = "Volumes2")
+                       valueBoxOutput(outputId = "Volumes2"),
+                       code("KPIs for selected Values")
                        ),
               
               tabPanel(tags$p("Volumes by Stores"),
                        ggiraphOutput(outputId = "Store"),
                        valueBoxOutput(outputId = "TotalSales3"),
                        valueBoxOutput(outputId = "TotalDiscount3"),
-                       valueBoxOutput(outputId = "Volumes3")
+                       valueBoxOutput(outputId = "Volumes3"),
+                       code("Stores' Mapping by Sales")
                        ),
+              
               tabPanel(tags$p("Category In-depth"),
                        plotOutput(outputId = "ParetoAnalysis"),
                        valueBoxOutput(outputId = "TotalSales5"),
                        valueBoxOutput(outputId = "TotalDiscount5"),
-                       valueBoxOutput(outputId = "Volumes5")
+                       valueBoxOutput(outputId = "Volumes5"),
+                       code("Which are the products that generate the most sales?")
                        ))
              )
            ),
@@ -204,9 +209,10 @@ ui <- fluidPage(
                                            ),
                                  
                                  tabPanel(tags$p("HolidaysEffect"),
-                                          strong("Are Sales during holidays statistically different?"),
+                                          code("Are Sales during holidays statistically different?"),
                                           plotOutput(outputId = "HolidaysEffect"),
-                                          valueBoxOutput(outputId = "Test")
+                                          valueBoxOutput(outputId = "Test"),
+                                          code("The reported value explains whether the difference between the two means is significant or not")
                                           ),
                                  
                                  tabPanel(tags$p("CPIRelevance"),
@@ -215,7 +221,12 @@ ui <- fluidPage(
                                           valueBoxOutput(outputId = "PV"),
                                           #br(),
             code("The reported value explains whether the coefficient related to CPI is significant or not in explaining Sales'trend")
-                                          )
+                                          ),
+            
+                                  tabPanel(tags$p("PriceAnalysis"),
+                                           plotOutput(outputId = "Price"),
+                                           code("Pay Attention in avoiding to select too many products. The graph could become a mess"))
+            
            )
           )
          )
@@ -234,11 +245,13 @@ server <- function(input, output){
       filter(StoreKey %in% input$StoreID) %>% 
       filter(ProductCategory_Lvl2 %in% input$Category) %>%
       filter(ProductKey %in% input$ProductID) %>% 
-      group_by(TransactionDate) %>% 
+      group_by(Year = year(TransactionDate), Month = month(TransactionDate)) %>% 
       summarise(Daily_Mean = mean(ActualSales),
                 Daily_Sum = sum(ActualSales),
                 Daily_Discount = -sum(SalesDiscount),
-                Volumes = sum(UnitVolume))
+                Volumes = sum(UnitVolume)) %>% 
+      arrange(Month, Year) %>%
+      mutate(Period = as.POSIXct(paste(Year, Month,"01", sep = "-"), format = "%Y-%m-%d"))
     })
   
   datasetInput2 <- reactive({
@@ -334,7 +347,25 @@ server <- function(input, output){
                     Period = as.factor(Inflation()$Period))
     })
  
-  
+    Price <-  reactive({
+      Sales %>% 
+      select(TransactionDate, ProductCategory_Lvl2, 
+             ProductKey, RetailFullPrice, UnitVolume, CPI_Monthly) %>%
+      filter(TransactionDate >= input$Time2[1] & TransactionDate <= input$Time2[2]) %>%
+      group_by(Year = year(TransactionDate), Month = month(TransactionDate),
+               ProductCategory_Lvl2, ProductKey) %>% 
+      summarise(price = sum(RetailFullPrice)/sum(UnitVolume), 
+                CPI_Monthly = unique(CPI_Monthly)) %>% 
+        ungroup() %>% 
+        group_by(Year, Month, ProductCategory_Lvl2) %>% 
+        mutate(category.price = mean(price)) %>% 
+        arrange(Month) %>% 
+        arrange(Year) %>% 
+        filter(ProductKey %in% input$ProductID2) %>% 
+        mutate(Period = paste(Year, Month, sep ="-"))
+    
+    })
+    
   # BarPlot
   output$PromotionMechanism <- renderPlot({
     print(myplot2 <- ggplot(datasetInput2(), aes(x=DistributionChannel, 
@@ -354,11 +385,12 @@ server <- function(input, output){
   
   # Time Series
   output$SalesVolumes <- renderPlot({
-    print(myplot <- ggplot(datasetInput(), aes(x = TransactionDate, y = Daily_Sum)) +
-            geom_line(color = "#00559F") + 
-            geom_line(aes(x = TransactionDate, 
-                          y = Daily_Discount*(max(Daily_Sum)/max(Daily_Discount))),
-                      color = "yellow4") +
+    print(myplot <- ggplot(datasetInput(), aes(x = Period, group = 1)) +
+                             geom_line(aes(y = Daily_Sum, colour = "Sales")) +
+                             geom_line(aes(y = Daily_Discount*(max(Daily_Sum)/max(Daily_Discount)), colour = "Discounts")) +
+                             scale_colour_manual("",
+                      breaks = c("Sales", "Discounts"),
+                      values = c("#00559F", "green4")) +
             scale_y_continuous(
             # Features of the first axis
             name = "AggregateSales",
@@ -452,7 +484,7 @@ server <- function(input, output){
     print(ggplot(data = topN.products(), aes(x = factor(ProductKey, levels = ProductKey), y = per.revenues)) +
     geom_bar(stat = "identity", aes(fill = topN.products()$tot.revenues, alpha = 0.6)) +
     geom_hline(yintercept = 0.75, colour = "#00559F") +
-    geom_hline(yintercept = 0.90, colour = "red") +
+    geom_hline(yintercept = 0.90, colour = "green4") +
     geom_point() +
     geom_path() +
     scale_x_discrete(breaks = topN.products()$ProductKey) +
@@ -503,6 +535,23 @@ server <- function(input, output){
   output$PV <- renderValueBox({
     valueBox("P-Value", coefficients(summary(lm(trend ~ CPI_M, data = Trend())))[2,4],
     color = "purple")
+  })
+  
+  output$Price <- renderPlot({
+    ggplot(data = Price(), aes(x = factor(Period, levels = unique(Period)), 
+                               y = price, group = ProductKey)) +
+      geom_line(aes(color = ProductKey)) +
+      geom_line(data = Price(), aes(y = CPI_Monthly), colour = "red") + 
+      geom_line(data = Price(), aes(y = category.price, 
+                                    group = ProductCategory_Lvl2, 
+                                    colour = ProductCategory_Lvl2)) +
+      ylab("Price") + 
+      xlab("Period") +
+      theme(axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            panel.background = element_rect(fill=NA),
+            plot.background = element_rect(fill=NA),
+            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
   })
   
 }
