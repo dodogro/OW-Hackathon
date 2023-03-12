@@ -322,8 +322,6 @@ ggplot(data = price, aes(x = factor(Period, levels = unique(Period)), y = price,
 ```
 
 
-
-
 ```{r Unitary price distribution}
 outliers.actualsales <- df %>% 
   filter(RetailFullPrice > 0 & UnitVolume > 0) %>% 
@@ -575,6 +573,7 @@ ggplot(SD, aes(x = TransactionDate, y = Daily_Sum)) +
 
 ```
 
+
 ```{r Correlation(Change in Discounts and Sales)}
 # Comparison with Changes in Volumes and Discounts
 ggplot(SD, aes(x = TransactionDate, y = ChangeInSales)) +
@@ -602,26 +601,50 @@ plot(rstandard(lm1))
 
 ```
 
-```{r Is Inflation Relevant?}
+```{r Is CPI Relevant for Sales?}
 # De-trending Sales
 
 DTS <- transaction.df %>% 
-  group_by(TransactionDate, WeekendFlag, Festivity, CPI_daily) %>% 
+  group_by(M = month(TransactionDate), Y = year(TransactionDate), CPI_Monthly) %>% 
   summarise(Sales = sum(ActualSales),
             Discounts = sum(SalesDiscount)) %>% 
-  mutate(DeflatedSales = Sales/CPI_daily) %>% 
-  mutate(FestivityFlag = case_when(is.na(Festivity) ~ 0,
-                                   TRUE ~ 1))
+  arrange(M) %>% 
+  arrange(Y) %>% 
+  mutate(Period = paste(Y, M, sep = "-"))
 
-DTS$Trend <- seq(1,length(DTS$TransactionDate), 1)
+# The idea: Does CPI explain the Sales' trend? If the coefficient of the regression is statistically significant, yes. Otherwise, no.
 
+plot(actualsales <- ts(DTS$Sales, start = c(2020,1), end = c(2022, 12), frequency = 12))
+plot(timeAS <- stl(actualsales, s.window = "periodic"))
+trendAS <- timeAS$time.series[,2] # Trend
+
+Trend <- as.data.frame(cbind(trendAS, DTS$CPI_Monthly, DTS$Period))
+colnames(Trend) <- c("trend", "CPI_M", "Period")
+Trend$Period <- as.factor(Trend$Period)
+Trend$trend <- as.numeric(Trend$trend)
+Trend$CPI_M <- as.numeric(Trend$CPI_M)
+
+print(myplot <- ggplot(Trend, aes(x = Period, y = scale(trend), group = 1)) +
+            geom_line(color = "deepskyblue1") + 
+            geom_line(aes(x = Period, 
+                          y = scale(CPI_M)),
+                      color = "green4")) + 
+            theme(# panel.grid.major = element_blank(),
+                  # axis.line = element_line(colour = "black"),
+                  axis.title.x = element_blank(),
+                  axis.title.y = element_blank(),
+                  panel.background = element_rect(fill=NA),
+                  plot.background = element_rect(fill=NA),
+                  axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
+# It looks like the sales' trend is very similar to CPI's one. Is the latter driving the former? Saying that there is causation is dangerous but if the coefficient in front of CPI is statistically significant, then we might assume that among possible other factors CPI is one of the possible Sales' trend's drivers. 
+      
 # Is there a trend?
-summary(lm <- lm(Sales ~ Trend, data = DTS))
-# Cool Plot Missing...
+summary(lmAS <- lm(trendAS ~ CPI_M, data = Trend))
 
-summary(lmD <- lm(DeflatedSales ~ Trend, data = DTS)) # Slight smaller t-value w.r.t trend but always extremely significant...What does this means? That CPI explains slightly the trend but it is definetely what drives the upwards patter .
+# It appears that CPI is extremely significant in explaining the Sales' TREND!
 
-
+```
 
 ```
 
@@ -691,11 +714,12 @@ ggplot(product.sales.discounts.final, aes(fill=flag,
 
 ```
 
+
 ```{r Holidays vs Normal days}
 # What we would like to see is if the promotions and sales have a different behavior (population) in holidays w.r.t. normal days. 
 
-HN <- transaction.df %>% 
-  group_by(TransactionDate, WeekendFlag, Festivity, CPI_daily) %>% 
+HN <- Sales  %>% 
+  group_by(TransactionDate, WeekendFlag, Festivity, CPI_daily, FestivityFlag) %>% 
   summarise(Sales = sum(ActualSales),
             Discounts = sum(SalesDiscount)) %>% 
   mutate(DeflatedSales = Sales/CPI_daily) %>% 
@@ -705,17 +729,16 @@ HN <- transaction.df %>%
 HN$FestivityFlag <- as.factor(HN$FestivityFlag)
 
 S <- ggplot(HN, aes(x=Sales, fill=FestivityFlag)) +
-  geom_density(alpha=0.4)
-
-mu <- ddply(HN, "FestivityFlag", summarise, grp.mean=mean(Sales))
-# Add mean lines
-S + geom_vline(data=mu, aes(xintercept=grp.mean, color=FestivityFlag),
+  geom_density(alpha=0.4) + 
+  geom_vline(data=plyr::ddply(HN, "FestivityFlag", 
+                             summarise, grp.mean=mean(Sales)), 
+             aes(xintercept=grp.mean, color=FestivityFlag),
              linetype="dashed")
 
 # Populations are slightly different with different means. Is this difference statistically significant? 
 
-t.test(Sales ~ FestivityFlag, data = HN) # The test shows that even at 10% confidence the difference between the two populations would be considered not statistically different from 0. 
-
+(test<-t.test(Sales ~ FestivityFlag, data = HN))$p.value # The test shows that even at 10% confidence the difference between the two populations would be considered not statistically different from 0. 
+test$p.value
 # What about Discounts though? 
 
 D <- ggplot(HN, aes(x=Discounts, fill=FestivityFlag)) +
@@ -728,7 +751,7 @@ D + geom_vline(data=mu, aes(xintercept=grp.mean, color=FestivityFlag),
 
 # Populations are slightly different with different means. Is this difference statistically significant? 
 
-t.test(Discounts ~ FestivityFlag, data = HN)
+test <- t.test(Discounts ~ FestivityFlag, data = HN)
 
 # The same conclusion as above can be drawn. 
 
