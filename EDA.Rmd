@@ -36,7 +36,7 @@ ggplot(data = trans.number, aes(x = Month, y = trans.record, group = Year,
   geom_point() + 
   scale_x_discrete(limits = trans.number$Month) +
   labs(x = "Month", y = "Number of transactions",
-       title = "Transaction number", subtitle = "2020 - 2022") +
+       title = "Transaction number", subtitle = "2020 - 2022", colour = "Year") +
   theme_minimal() +
   theme(text = element_text(size = 20))
 
@@ -101,7 +101,7 @@ ggplot(dayoftheweek.plot, aes(x = Day, y = rel.frequency, fill = Year)) +
   labs(x = "Category", y = "Relative frequency")
 ```
 
-Transaction more or less disstributed throughout the week with a peak from Friday to Sunday
+Transaction more or less distributed throughout the week with a peak from Friday to Sunday
 
 ## Weekend Flag
 ```{r WeekendFlag}
@@ -171,12 +171,10 @@ print(paste(length(stores.2022[!(stores.2022 %in% stores.2020)]), "stores opened
 remove(stores.2020, stores.2022)
 ```
 
-# ProductCategory
+# Product Category
 ```{r Exploring tables}
 table(df$ProductCategory_Lvl2)
 ```
-
-# Product Category
 
 ```{r Preparing data}
 # Select product category
@@ -195,8 +193,11 @@ transactions.sag <- df %>%
 ggplot(data = transactions.sag, aes(x = TransactionDate, y = cum_rev,
                                     fill = ProductCategory_Lvl2)) +
   labs(fill = "Product Category\nLvl. 2", 
-       x = "Transaction Date",y = "Cumulative revenues" ) +
-  geom_area(color = "black", linewidth = 0.2, alpha = 0.6)
+       x = "Transaction Date",y = "Cumulative revenues",
+       title = "Cumulative revenues", subtitle = "2020 - 2022") +
+  geom_area(color = "black", linewidth = 0.2, alpha = 0.6) +
+  theme_minimal() +
+  theme(text = element_text(size = 20))
 ```
 
 AD products are irrelevant when compared to other categories, AE shows a really slow growth, while AA, AB, AC are the best categories in terms of volumes and growth.
@@ -228,7 +229,9 @@ ggplot(data = dist.channel.sag, aes(x = TransactionDate, y = cum_rev,
                                     fill = DistributionChannel)) +
   labs(fill = "Distribution channel", 
        x = "Transaction Date",y = "Cumulative revenues" ) +
-  geom_area(color = "black", linewidth = 0.2, alpha = 0.6)
+  geom_area(color = "black", linewidth = 0.2, alpha = 0.6) +
+  theme_minimal() +
+  theme(text = element_text(size = 20))
 ```
 
 Online distribution channel is a very narrow revenues source with low growth
@@ -282,7 +285,7 @@ view(positive.discounts)
 ```{r Unitary price}
 ################################################
 # Select product key to explore
-product.code <- c(49340, 49341, 49333, 49329)
+product.code <- c(49329)
 
 # Select starting date
 starting.date <- "2020-01-01"
@@ -323,6 +326,14 @@ ggplot(data = price, aes(x = factor(Period, levels = unique(Period)), y = price,
   theme(axis.text.x = element_text(angle = 90, vjust = 0.8, hjust=0.5))
 
 ```
+```{r Mean price}
+# Mean product price
+mean(price$price)
+
+# Mean category price
+mean(price$category.price)
+
+```
 
 
 ```{r Unitary price distribution}
@@ -332,12 +343,6 @@ outliers.actualsales <- df %>%
 
 summary(outliers.actualsales$unitary.price)
 ```
-
-```{r}
-outliers.transactions <- outliers.actualsales %>% 
-  filter(unitary.price >= 41)
-```
-
 
 ```{r Plotting price distribution}
 retail.price <- outliers.actualsales %>% 
@@ -351,8 +356,11 @@ ggplot(data = retail.price, aes(x = time.interval, y = avg.price, group = Produc
                                 colour = factor(ProductCategory_Lvl2))) +
   geom_line() +
   geom_point() +
-  ylab("Average monthly category price") +
-  xlab("Date")
+  labs(colour = "Product Category \nLvl.2",
+       x = "Period", y = "Weighted average category price", 
+       title = "Weighted average category price", subtitle = "2020 - 2022") +
+  theme_minimal() +
+  theme(text = element_text(size = 20))
 
 ```
 Huge jump in the average unitary price ticket for categories AD and AE starting from July 2021. A deeper exploration is needed in order to check if the price of the items sold in the categories changed or it is due to an increase in selling of higher priced products belonging to the specific category.
@@ -360,7 +368,7 @@ Huge jump in the average unitary price ticket for categories AD and AE starting 
 ```{r Pareto analysis}
 #################################################
 # Select the timeframe of analysis
-time.interval <- interval(as.POSIXct("2022-01-01",
+time.interval <- interval(as.POSIXct("2020-01-01",
                                      format = "%Y-%m-%d",
                                      tz = time_at_tz(Sys.timezone(location = TRUE))),
                           as.POSIXct("2022-12-31",
@@ -440,11 +448,12 @@ product.deep.dive.df <- df %>%
 
 # Comparing the sales volumes of the product to those of the category
 sales.volumes.product <- product.deep.dive.df %>% 
-  group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
+  group_by(Month = month(TransactionDate), Year = year(TransactionDate), Region_Lvl1, DistributionChannel) %>% 
   arrange(Month, Year) %>% 
   summarise(Volumes = sum(UnitVolume),
             ActualSales = sum(ActualSales),
-            SalesDiscount = sum(SalesDiscount)) %>% 
+            SalesDiscount = sum(SalesDiscount),
+            Transaction.number = n()) %>% 
   ungroup() %>% 
   mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
   arrange(Month) %>% 
@@ -454,32 +463,63 @@ sales.volumes.product <- product.deep.dive.df %>%
 sales.volumes.category <- df %>% 
   filter(TransactionDate %within% time.interval & 
            ProductCategory_Lvl2 == unique(ProductCategory_Lvl2[ProductKey == product.code])) %>% 
+  group_by(Month = month(TransactionDate), Year = year(TransactionDate), Region_Lvl1, DistributionChannel) %>% 
+  arrange(Month, Year) %>% 
+  summarise(Volumes = sum(UnitVolume),
+            ActualSales = sum(ActualSales),
+            SalesDiscount = sum(SalesDiscount),
+            Transaction.number = n()) %>% 
+  ungroup() %>% 
+  mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
+  arrange(Month) %>% 
+  arrange(Year) %>% 
+  mutate(SalesDeviation = (ActualSales-mean(ActualSales))/sd(ActualSales))
+
+# Creating the data for the plot
+sales.volumes.product1 <- product.deep.dive.df %>% 
   group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
   arrange(Month, Year) %>% 
   summarise(Volumes = sum(UnitVolume),
             ActualSales = sum(ActualSales),
-            SalesDiscount = sum(SalesDiscount)) %>% 
+            SalesDiscount = sum(SalesDiscount),
+            Transaction.number = n()) %>% 
+  ungroup() %>% 
+  mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
+  arrange(Month) %>% 
+  arrange(Year) %>% 
+  mutate(SalesDeviation = (ActualSales-mean(ActualSales))/sd(ActualSales))
+
+sales.volumes.categor1 <- df %>% 
+  filter(TransactionDate %within% time.interval & 
+           ProductCategory_Lvl2 == unique(ProductCategory_Lvl2[ProductKey == product.code])) %>% 
+  group_by(Month = month(TransactionDate), Year = year(TransactionDate)) %>% 
+  arrange(Month, Year) %>% 
+  summarise(Volumes = sum(UnitVolume),
+            ActualSales = sum(ActualSales),
+            SalesDiscount = sum(SalesDiscount),
+            Transaction.number = n()) %>% 
   ungroup() %>% 
   mutate(TransactionPeriod = paste(Year, Month, sep = "-")) %>% 
   arrange(Month) %>% 
   arrange(Year) %>% 
   mutate(SalesDeviation = (ActualSales-mean(ActualSales))/sd(ActualSales))
   
-deep.dive.final <- left_join(sales.volumes.product, sales.volumes.category, by = "TransactionPeriod") 
+deep.dive.final <- left_join(sales.volumes.product1, sales.volumes.category1, by = "TransactionPeriod") 
 
 
 # Plotting sales
-ggplot(data = deep.dive.final, aes(x = factor(TransactionPeriod, levels = TransactionPeriod),
+ggplot(data = deep.dive.final, aes(x = factor(TransactionPeriod, levels = unique(TransactionPeriod)),
                                          y = SalesDeviation.x,
                                          group = 1)) +
   geom_line(aes(y = SalesDeviation.x), colour = "red") +
-  geom_line(aes(y = SalesDeviation.y), colour = "blue") +
-  geom_point() +
-  labs(title = paste("Product code:", as.character(product.code), "Category:",
-                      unique(df$ProductCategory_Lvl2[df$ProductKey == product.code]), sep = " "),
+  geom_line(aes(y = SalesDeviation.y), colour = "navy") +
+  labs(title = paste("Product code:", as.character(product.code)), 
+       subtitle = paste("Category:", unique(df$ProductCategory_Lvl2[df$ProductKey == product.code]), sep = " "),
        x = "Transaction Period",
        y = "Sales Variation") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) +
+  theme(text = element_text(size = 20))
 
 
 # Summary statistics: Frequency of distribution channel
@@ -487,6 +527,92 @@ print("Transaction frequency:")
 table(product.deep.dive.df$DistributionChannel)
 
 ```
+
+```{r Product deep dive 2}
+# Transaction number
+sum(sales.volumes.product$Transaction.number[sales.volumes.product$DistributionChannel == "Physical"])
+sum(sales.volumes.product$Transaction.number[sales.volumes.product$DistributionChannel == "Online"])
+
+sum(sales.volumes.product$Transaction.number[sales.volumes.product$DistributionChannel == "Physical"])/
+  (sum(sales.volumes.product$Transaction.number[sales.volumes.product$DistributionChannel == "Physical"]) +
+   sum(sales.volumes.product$Transaction.number[sales.volumes.product$DistributionChannel == "Online"]))
+
+
+# Regional distribution (Lvl1)
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "A"])
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "B"])
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "O"])
+
+sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "A"])
+sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "B"])
+sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "O"])
+
+# Region "A" shares
+# Product shares
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "A"])/
+  (sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "A"]) +
+     sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "B"]) +
+      sum(sales.volumes.product$ActualSales[sales.volumes.product$Region_Lvl1 == "O"]))
+
+# Category shares
+sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "A"])/
+  (sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "A"]) +
+    sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "B"]) +
+     sum(sales.volumes.category$ActualSales[sales.volumes.category$Region_Lvl1 == "O"]))
+
+# Sales
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020])
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2021])
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2022])
+
+# Growth rate
+# 2020 - 2022 -> Product
+(sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2022]) -
+    sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020]))/
+  sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020])
+
+# 2020 - 2021 -> Product
+(sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2021]) -
+    sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020]))/
+  sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020])
+
+# 2021 - 2022 -> Product
+(sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2022]) -
+    sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2021]))/
+  sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2021])
+
+# 2020 - 2022 -> Category
+(sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2022]) -
+    sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2020]))/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2020])
+
+# 2020 - 2021 -> Category
+(sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2021]) -
+    sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2020]))/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2020])
+
+# 2021 - 2022 -> Category
+(sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2022]) -
+    sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2021]))/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2021])
+
+# Product shares
+# 2020
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2020])/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2020])
+
+# 2021
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2021])/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2021])
+
+# 2022
+sum(sales.volumes.product$ActualSales[sales.volumes.product$Year == 2022])/
+  sum(sales.volumes.category$ActualSales[sales.volumes.category$Year == 2022])
+                                                                                  
+                                        
+
+```
+
 
 ```{r Brands}
 df$BrandKey <- as.factor(df$BrandKey)
