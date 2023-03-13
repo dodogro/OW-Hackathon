@@ -90,8 +90,6 @@ df$PromoFlag <- as.factor(df$PromoFlag)
 summary(df) # No missing values
 table(df$PromoFlag)
 ```
-
-
 ```{r Adding Exogenous factors}
 load(paste0(path, "holidays.df.RData"))
 
@@ -267,7 +265,7 @@ Elasticity49329 <- elasticity("49329") # This returns error because according to
 # Creating the dataset for the model
 # Filtering by ProductKey
 # Note: The analysis will be performed fro productKey = 49340. For the rest a function will be used
-product.code.filter <- c("49329")
+product.code.filter <- c("49341")
 
 sales <- transaction.df %>% 
   select(ProductKey, TransactionDate, UnitVolume, ActualSales, SalesDiscount,
@@ -284,14 +282,6 @@ sales <- transaction.df %>%
          DiscountRate = abs(SumDiscounts)/TotSales) %>% 
   ungroup()
 
-ggplot(data = sales, aes(x = TransactionDate, y = TotSales)) + 
-  geom_line(colour = "lightblue3") +
-  theme(axis.title.x = element_blank(),
-            axis.title.y = element_blank(),
-            panel.background = element_rect(fill=NA),
-            #plot.background = element_rect(fill=NA),
-            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
-
 df <- left_join(Date, sales, by = c("Date" = "TransactionDate"))
 df$ProductKey <- droplevels(df$ProductKey)
 df$ProductKey[which(is.na(df$ProductKey))] <- product.code.filter
@@ -307,7 +297,7 @@ table(df$PromoFlag)
 
 # Adding Exogenous factors}
 
-#load(paste0(path, "holidays.df.RData"))
+load(paste0(path, "holidays.df.RData"))
 
 df <- left_join(df, holidays.df, by = c("Date" = "TransactionDate"))
 df <- df %>% 
@@ -318,6 +308,7 @@ df$Festivity <- as.factor(df$Festivity)
 # Checking
 table(df$Festivity)
 
+dataset <- df[,c("CPI_daily", "WeekendFlag", "Trend", "PromoFlag")]
 dataset$TotVolumes <- df$TotSales
 dataset$Weekday <- df$Weekday
 dataset$Seasonal <- stl(ts(df$TotVolumes, start = min(df$Date), frequency = 365), s.window = "periodic")$time.series[,1]
@@ -343,6 +334,8 @@ dataset$PromoFlag <- as.factor(rep(0, length(dataset$PromoFlag)))
 baseline$baseline <- exp(predict(lm, newdata = dataset))
 baseline$PromoFlag <- df$PromoFlag
 baseline$Discount <- df$SumDiscounts
+
+RMSE <- sqrt(mean(baseline$TrueValues[which(baseline$PromoFlag == 0)] - baseline$baseline[which(baseline$PromoFlag == 0)]))
 
 ## plot the forecasts
 
@@ -378,6 +371,33 @@ Elasticity <- -Uplift/Discount
 mean(Elasticity$TrueValues)
 
 ```
+
+```{r 49329}
+product.code.filter <- c("49329")
+
+sales <- transaction.df %>% 
+  select(ProductKey, TransactionDate, UnitVolume, ActualSales, SalesDiscount,
+         RetailFullPrice, DistributionChannel) %>% 
+  filter(DistributionChannel == "Physical" &
+           ProductKey %in% product.code.filter) %>% 
+  group_by(ProductKey, TransactionDate) %>% 
+  summarise(SumDiscounts = sum(SalesDiscount),
+            TotSales = sum(RetailFullPrice),
+            TotVolumes = sum(UnitVolume)) %>% 
+  mutate(PromoFlag = case_when((abs(SumDiscounts)/TotSales) > 0.05 ~ 1,
+                               TRUE ~ 0),
+         Date = TransactionDate,
+         DiscountRate = abs(SumDiscounts)/TotSales) %>% 
+  ungroup()
+
+ggplot(data = sales, aes(x = TransactionDate, y = TotSales)) + 
+  geom_line(colour = "lightblue3") +
+  theme(axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            panel.background = element_rect(fill=NA),
+            #plot.background = element_rect(fill=NA),
+            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
 ```
 
 

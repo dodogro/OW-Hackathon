@@ -1757,31 +1757,15 @@ to have saved the folder containing all the data sets in a separate
 folder called “Data-OW”</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucGF0aCA9IFwiLi4vRGF0YS1PVy9cIlxuYGBgIn0= -->
-<pre class="r"><code>path = &quot;../Data-OW/&quot;</code></pre>
-<!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <p>Importing libraries</p>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxucGFjbWFuOjpwX2xvYWQobHVicmlkYXRlLGRwbHlyLHRpbWVjaGFuZ2Usc3RyaW5ncixzaGlueWRhc2hib2FyZCwgXG4gICAgICAgICAgICAgICBzaGlueSwgZ2dwbG90Miwgc2hpbnl0aGVtZXMsIGdncmVwZWwsIHNoaW55V2lkZ2V0cyxcbiAgICAgICAgICAgICAgIGdnY2hhcnRzLCBwYWNrY2lyY2xlcywgdmlyaWRpcywgZ2dpcmFwaCwgZ2Nvb2tib29rKVxuXG4jIFJlbW92aW5nIHNjaWVudGlmaWMgbm90YXRpb25cblxub3B0aW9ucyhzY2lwZW49OTk5KVxuXG5gYGAifQ== -->
-<pre class="r"><code>pacman::p_load(lubridate,dplyr,timechange,stringr,shinydashboard, 
-               shiny, ggplot2, shinythemes, ggrepel, shinyWidgets,
-               ggcharts, packcircles, viridis, ggiraph, gcookbook)
-
-# Removing scientific notation
-
-options(scipen=999)
-</code></pre>
-<!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxubG9hZChwYXN0ZTAocGF0aCxcIkRCRGF0YS5SRGF0YVwiKSlcbmBgYCJ9 -->
-<pre class="r"><code>load(paste0(path,&quot;DBData.RData&quot;))</code></pre>
-<!-- rnb-source-end -->
 <!-- rnb-chunk-end -->
 <!-- rnb-text-begin -->
 <!-- rnb-text-end -->
@@ -1810,9 +1794,62 @@ Sales &lt;- subset(Sales, select = -c(Festivity))</code></pre>
 <pre class="r"><code>shinyApp(ui, server)
 </code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiXG5MaXN0ZW5pbmcgb24gaHR0cDovLzEyNy4wLjAuMTo1MTQxXG4ifQ== -->
+<!-- rnb-output-begin eyJkYXRhIjoiXG5MaXN0ZW5pbmcgb24gaHR0cDovLzEyNy4wLjAuMTo1MTQxXG4gIDIyNzogPEFub255bW91cz5cbiAgMjI2OiBzaWduYWxDb25kaXRpb25cbiAgMjI1OiBzaWduYWxfYWJvcnRcbiAgMjI0OiBjbmRfc2lnbmFsXG4gIDIyMzogaGFuZGxlcnNbWzFMXV1cbiAgMjIyOiA8QW5vbnltb3VzPlxuICAyMjE6IHNpZ25hbENvbmRpdGlvblxuICAyMjA6IHNpZ25hbF9hYm9ydFxuICAyMTk6IGFib3J0XG4gIDIxODogc3RvcF9zdWJzY3JpcHRcbiAgMjE3OiBzdG9wX3N1YnNjcmlwdF9vb2JcbiAgMjE2OiA8QW5vbnltb3VzPlxuICAyMTU6IHZjdHJzOjp2ZWNfYXNfbG9jYXRpb25cbiAgMjE0OiBjaHJfYXNfbG9jYXRpb25zXG4gIDIxMzogYXNfaW5kaWNlc19pbXBsXG4gIDIxMjogYXNfaW5kaWNlc19zZWxfaW1wbFxuICAyMTE6IHdhbGtfZGF0YV90cmVlXG4gIDIxMDogcmVkdWNlX3NlbHNcbiAgMjA5OiBldmFsX2NcbiAgMjA4OiB3YWxrX2RhdGFfdHJlZVxuICAyMDc6IHZhcnNfc2VsZWN0X2V2YWxcbiAgMjAzOiBldmFsX3NlbGVjdF9pbXBsXG4gIDIwMjogdGlkeXNlbGVjdDo6ZXZhbF9zZWxlY3RcbiAgMjAxOiBzZWxlY3QuZGF0YS5mcmFtZVxuICAyMDA6IHNlbGVjdFxuICAxOTk6IGZpbHRlclxuICAxOTg6IGdyb3VwX2J5XG4gIDE5Nzogc3VtbWFyaXNlXG4gIDE5NjogdW5ncm91cFxuICAxOTU6IGdyb3VwX2J5XG4gIDE5NDogbXV0YXRlXG4gIDE5MzogYXJyYW5nZVxuICAxOTI6IGFycmFuZ2VcbiAgMTkxOiBmaWx0ZXJcbiAgMTkwOiBtdXRhdGVcbiAgMTg5OiAlPiVcbiAgMTg4OiA8cmVhY3RpdmU6UHJpY2U+IFsjMTEzXVxuICAxODY6IC5mdW5jXG4gIDE4MzogY29udGV4dEZ1bmNcbiAgMTgyOiBlbnYkcnVuV2l0aFxuICAxNzU6IGN0eCRydW5cbiAgMTc0OiBzZWxmJC51cGRhdGVWYWx1ZVxuICAxNzI6IFByaWNlXG4gIDE3MDogcmVuZGVyUGxvdCBbIzMwM11cbiAgMTY4OiBmdW5jXG4gIDEyODogZHJhd1Bsb3RcbiAgMTE0OiA8cmVhY3RpdmU6cGxvdE9iaj5cbiAgIDk4OiBkcmF3UmVhY3RpdmVcbiAgIDg1OiByZW5kZXJGdW5jXG4gICA4NDogb3V0cHV0JFByaWNlXG4gICAgMzogcnVuQXBwXG4gICAgMjogcHJpbnQuc2hpbnkuYXBwb2JqXG4gICAgMTogPEFub255bW91cz5cbiJ9 -->
 <pre><code>
-Listening on http://127.0.0.1:5141</code></pre>
+Listening on http://127.0.0.1:5141
+  227: &lt;Anonymous&gt;
+  226: signalCondition
+  225: signal_abort
+  224: cnd_signal
+  223: handlers[[1L]]
+  222: &lt;Anonymous&gt;
+  221: signalCondition
+  220: signal_abort
+  219: abort
+  218: stop_subscript
+  217: stop_subscript_oob
+  216: &lt;Anonymous&gt;
+  215: vctrs::vec_as_location
+  214: chr_as_locations
+  213: as_indices_impl
+  212: as_indices_sel_impl
+  211: walk_data_tree
+  210: reduce_sels
+  209: eval_c
+  208: walk_data_tree
+  207: vars_select_eval
+  203: eval_select_impl
+  202: tidyselect::eval_select
+  201: select.data.frame
+  200: select
+  199: filter
+  198: group_by
+  197: summarise
+  196: ungroup
+  195: group_by
+  194: mutate
+  193: arrange
+  192: arrange
+  191: filter
+  190: mutate
+  189: %&gt;%
+  188: &lt;reactive:Price&gt; [#113]
+  186: .func
+  183: contextFunc
+  182: env$runWith
+  175: ctx$run
+  174: self$.updateValue
+  172: Price
+  170: renderPlot [#303]
+  168: func
+  128: drawPlot
+  114: &lt;reactive:plotObj&gt;
+   98: drawReactive
+   85: renderFunc
+   84: output$Price
+    3: runApp
+    2: print.shiny.appobj
+    1: &lt;Anonymous&gt;</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-output-begin eyJkYXRhIjoiTkFcbiJ9 -->
 <pre><code>NA</code></pre>
