@@ -73,7 +73,8 @@ sales <- transaction.df %>%
             TotVolumes = sum(UnitVolume)) %>% 
   mutate(PromoFlag = case_when((abs(SumDiscounts)/TotSales) > 0.05 ~ 1,
                                TRUE ~ 0),
-         Date = TransactionDate) %>% 
+         Date = TransactionDate,
+         DiscountRate = abs(SumDiscounts)/TotSales) %>% 
   ungroup()
 
 df <- left_join(Date, sales, by = c("Date" = "TransactionDate"))
@@ -94,7 +95,7 @@ table(df$PromoFlag)
 ```{r Adding Exogenous factors}
 load(paste0(path, "holidays.df.RData"))
 
-df <- left_join(df, holidays.df, by = "Date")
+df <- left_join(df, holidays.df, by = c("Date" = "TransactionDate"))
 df <- df %>% 
   mutate(Festivity = case_when(is.na(Festivity) ~ 0,
                    TRUE ~ 1))
@@ -106,6 +107,7 @@ table(df$Festivity)
 
 ```{r Completed Data set for Baseline Predction and related Plot}
 View(df)
+
 ```
 
 ```{r Plot}
@@ -132,13 +134,15 @@ df$TotVolumes %>% diff(lag=7) %>% ggtsdisplay() # Looks like differencing works 
 
 ```{r SARIMAX}
 baseline_Auto_SARIMAX = auto.arima(as.vector(df[,"TotVolumes"]), # specify main trend
-                              xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]), # specify exogenous variables here
+                              xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag","Trend", "PromoFlag")]), # specify exogenous variables here
                               trace = TRUE,
                               seasonal = TRUE, # allow a SARIMAX model
                               stepwise = TRUE,
                               approximation = FALSE) 
+summary(baseline_Auto_SARIMAX)
 
 ```
+
 ```{r Testing}
 checkresiduals(baseline_SARIMAX)
 test(resid(baseline_SARIMAX))
@@ -149,14 +153,14 @@ summary(baseline_SARIMAX)
 
 ```{r Predicting Baseline}
 # Creating data set where no promotions are present an trying to predict the missing ones
-dataset <- df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]
+dataset <- df[,c("CPI_daily", "WeekendFlag", "Trend", "PromoFlag")]
 dataset$PromoFlag <- rep(0, length(dataset$PromoFlag))
 dataset$PromoFlag <- as.factor(dataset$PromoFlag)
 summary(dataset)
 str(dataset)
 
 ## produce forecasts
-myforecasts <- forecast::forecast(baseline_Sarimax, xreg=data.matrix(dataset))
+myforecasts <- forecast::forecast(baseline_Auto_SARIMAX, xreg=data.matrix(dataset))
 baseline <- as.data.frame(cbind(myforecasts$fitted, as.character(Date$Date)))
 colnames(baseline) <- c("Forecasts", "Date")
 baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
@@ -177,45 +181,7 @@ ggplot(data = baseline,
   theme(legend.title = element_blank())
 ```
 
-```{r Linear Model ? }
-dataset$TotVolumes <- df$TotVolumes
-lm  <- lm(data = df, log(TotVolumes) ~ CPI_daily + Trend + I(Trend^2) + Festivity + PromoFlag)
-
-summary(lm)
-head(exp(lm$fitted.values))
-
-baseline <- as.data.frame(cbind(exp(lm$fitted.values), as.character(Date$Date)))
-colnames(baseline) <- c("Forecasts", "Date")
-baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
-                                tz = time_at_tz(Sys.timezone(location = TRUE)))
-baseline$Forecasts <- as.numeric(baseline$Forecasts)
-baseline$TrueValues <- df$TotVolumes
-
-## plot the forecasts
-
-ggplot(data = baseline,
-       aes(x = Date, y = Forecasts)) +
-  geom_line(linetype = "solid", color = "blue") +
-  geom_line(aes(x = Date, y = TrueValues), color = "red", alpha = 0.7) +
-  #geom_point() +
-  geom_hline(yintercept = mean(baseline$Forecasts)) +
-  ylab("TotVolumes") +
-  xlab("Date") +
-  theme(legend.title = element_blank())
-```
-
-```{r Uplift}
-# Looking for the dates in which promotions have been activated
-(dates_elasticity <- df$Date[which(df$PromoFlag == 1)]) # Succession of days...interesting
-Actual <- df %>% filter(Date %in% dates_elasticity) %>%  select(TotVolumes) 
-Base <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(Forecasts) 
-Uplift <- Actual - Base
-Discount <- df %>% filter(Date %in% dates_elasticity) %>% select(SumDiscounts)
-Elasticity <- -Uplift/Discount
-
-```
-
-```{r Elasticity Function}
+```{r Elasticity Function with SARIMAX}
 elasticity <- function(Product) {
 
 sales <- transaction.df %>% 
@@ -245,22 +211,28 @@ df <- df %>%
   mutate(Festivity = case_when(is.na(Festivity) ~ 0,
                    TRUE ~ 1))
 df$Festivity <- as.factor(df$Festivity)
-baseline_Sarimax<- Arima(as.vector(df[,"TotVolumes"]), 
-                         order=c(2,1,2), 
-                         seasonal=c(1,0,0),
-                         xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]))
-dataset <- df[,c("CPI_daily", "WeekendFlag", "Festivity", "Trend", "PromoFlag")]
+
+baseline_Auto_SARIMAX = auto.arima(as.vector(df[,"TotVolumes"]), # specify main trend
+                              xreg = data.matrix(df[,c("CPI_daily", "WeekendFlag","Trend", "PromoFlag")]), # specify exogenous variables here
+                              trace = TRUE,
+                              seasonal = TRUE, # allow a SARIMAX model
+                              stepwise = TRUE,
+                              approximation = FALSE) 
+
+
+dataset <- df[,c("CPI_daily", "WeekendFlag", "Trend", "PromoFlag")]
 dataset$PromoFlag <- rep(0, length(dataset$PromoFlag))
 dataset$PromoFlag <- as.factor(dataset$PromoFlag)
 
 ## produce forecasts
-myforecasts <- forecast::forecast(baseline_Sarimax, xreg=data.matrix(dataset))
+myforecasts <- forecast::forecast(baseline_Auto_SARIMAX, xreg=data.matrix(dataset))
 baseline <- as.data.frame(cbind(myforecasts$fitted, as.character(Date$Date)))
 colnames(baseline) <- c("Forecasts", "Date")
 baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
                                 tz = time_at_tz(Sys.timezone(location = TRUE)))
 baseline$Forecasts <- as.numeric(baseline$Forecasts)
 baseline$TrueValues <- df$TotVolumes
+
 
 # Calculating elasticity
 dates_elasticity <- df$Date[which(df$PromoFlag == 1)] 
@@ -287,4 +259,125 @@ Elasticity49329 <- elasticity("49329") # This returns error because according to
 
 # Note: Ignore the error that is returned by the function!
 ```
+
+```{r Non Linear Function}
+
+# Run this cell multiple times by changing the product.code.filter and selecting the productKey in which there is interest to calculate the elastictity
+
+# Creating the dataset for the model
+# Filtering by ProductKey
+# Note: The analysis will be performed fro productKey = 49340. For the rest a function will be used
+product.code.filter <- c("49329")
+
+sales <- transaction.df %>% 
+  select(ProductKey, TransactionDate, UnitVolume, ActualSales, SalesDiscount,
+         RetailFullPrice, DistributionChannel) %>% 
+  filter(DistributionChannel == "Physical" &
+           ProductKey %in% product.code.filter) %>% 
+  group_by(ProductKey, TransactionDate) %>% 
+  summarise(SumDiscounts = sum(SalesDiscount),
+            TotSales = sum(RetailFullPrice),
+            TotVolumes = sum(UnitVolume)) %>% 
+  mutate(PromoFlag = case_when((abs(SumDiscounts)/TotSales) > 0.05 ~ 1,
+                               TRUE ~ 0),
+         Date = TransactionDate,
+         DiscountRate = abs(SumDiscounts)/TotSales) %>% 
+  ungroup()
+
+ggplot(data = sales, aes(x = TransactionDate, y = TotSales)) + 
+  geom_line(colour = "lightblue3") +
+  theme(axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            panel.background = element_rect(fill=NA),
+            #plot.background = element_rect(fill=NA),
+            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
+df <- left_join(Date, sales, by = c("Date" = "TransactionDate"))
+df$ProductKey <- droplevels(df$ProductKey)
+df$ProductKey[which(is.na(df$ProductKey))] <- product.code.filter
+df$SumDiscounts[which(is.na(df$SumDiscounts))] <- 0
+df$TotSales[which(is.na(df$SumFullPrices))] <- 0
+df$TotVolumes[which(is.na(df$TotVolumes))] <- 0
+df$Trend <- 1:length(df$TotVolumes)
+df$PromoFlag <- as.factor(df$PromoFlag)
+
+# Check for missing values
+summary(df) # No missing values
+table(df$PromoFlag)
+
+# Adding Exogenous factors}
+
+#load(paste0(path, "holidays.df.RData"))
+
+df <- left_join(df, holidays.df, by = c("Date" = "TransactionDate"))
+df <- df %>% 
+  mutate(Festivity = case_when(is.na(Festivity) ~ 0,
+                   TRUE ~ 1))
+df$Festivity <- as.factor(df$Festivity)
+
+# Checking
+table(df$Festivity)
+
+dataset$TotVolumes <- df$TotSales
+dataset$Weekday <- df$Weekday
+dataset$Seasonal <- stl(ts(df$TotVolumes, start = min(df$Date), frequency = 365), s.window = "periodic")$time.series[,1]
+dataset$Holidays <- df$Festivity
+dataset$DiscountRate <- df$DiscountRate
+dataset$PromoFlag <- df$PromoFlag
+dataset$CPI_daily <- df$CPI_daily
+
+lm  <- lm(data = dataset, log(TotVolumes) ~ Trend + I(Trend^2) + PromoFlag +
+            DiscountRate + Seasonal + Holidays + CPI_daily)
+
+summary(lm)
+head(exp(lm$fitted.values))
+
+baseline <- as.data.frame(cbind(exp(lm$fitted.values), as.character(Date$Date)))
+colnames(baseline) <- c("Forecasts", "Date")
+baseline$Date <- as.POSIXct(baseline$Date, format = "%Y-%m-%d",
+                                tz = time_at_tz(Sys.timezone(location = TRUE)))
+baseline$Forecasts <- as.numeric(baseline$Forecasts)
+baseline$TrueValues <- df$TotSales
+
+dataset$PromoFlag <- as.factor(rep(0, length(dataset$PromoFlag)))
+baseline$baseline <- exp(predict(lm, newdata = dataset))
+baseline$PromoFlag <- df$PromoFlag
+baseline$Discount <- df$SumDiscounts
+
+## plot the forecasts
+
+ggplot(data = baseline,
+       aes(x = Date, y = Forecasts)) +
+  geom_line(linetype = "solid", color = "red4") +
+  geom_line(aes(x = Date, y = TrueValues), color = "lightblue3", alpha = 0.7) +
+  geom_line(aes(x = Date, y = baseline), color = "navy", alpha = 1) +
+  #geom_point() +
+  #geom_hline(yintercept = mean(baseline$Forecasts)) +
+  ylab("TotVolumes") +
+  xlab("Date") +
+  theme(legend.title = element_blank()) +
+  geom_vline(data = baseline, xintercept = baseline$Date[which(baseline$PromoFlag ==1)],
+             color = "lightblue", alpha = 0.1) +
+   theme(axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            panel.background = element_rect(fill=NA),
+            #plot.background = element_rect(fill=NA),
+            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5))
+
+
+```
+
+```{r Uplift}
+# Looking for the dates in which promotions have been activated
+(dates_elasticity <- baseline$Date[which(df$PromoFlag == 1)]) 
+Actual <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(TrueValues) 
+Base <- baseline %>% filter(Date %in% dates_elasticity) %>%  select(baseline) 
+Uplift <- Actual - Base
+Discount <- baseline %>% filter(Date %in% dates_elasticity) %>% select(Discount)
+Elasticity <- -Uplift/Discount
+mean(Elasticity$TrueValues)
+
+```
+```
+
 
